@@ -2,6 +2,10 @@
 
 #include <syslog.h>
 
+bool debug = false, verbose = false;
+
+const int log_buff_length = 1024;
+char log_buff[log_buff_length];
 bool log_fxn(int level, const char *msg) {
 	printf("logger: level = %d. message = [%s]\n", level, msg);
 }
@@ -19,52 +23,27 @@ bool process_incoming_http(RemoteControl *server, int fd, std::vector<std::strin
 	int obuff_len = params->obuff_len; 
 	int n = elements.size();
 
-	if(n >= 2 && elements[0] == "GET" && elements[1] == "/test.html") {
+	if(n < 2) { return false; } /* nothing useful */
+
+	if(elements[0] != "GET") { return false; } /* this is all we're using for now */
+
+	if(elements[1] == "/test.html") {
 		snprintf(obuff, obuff_len, "Welcome, my friend, to the machine!");
 		server->send_minimal_http_reply(fd, obuff, strlen(obuff));
-	} else if(n >= 3 && elements[0] == "GET" && elements[1] == "/display_settings") {
-		bool flag;
-		snprintf(obuff, obuff_len, "NO PARAMETERS PARSED");
-		int new_exposure_setting = -1;
-		flag = parse_integer(elements.at(2).c_str(), "exposure", &new_exposure_setting, new_exposure_setting);
-		if(flag && (new_exposure_setting > 0)) {
-		}
-		float gamma = 0.0;
-		flag = parse_float(elements.at(2).c_str(), "gamma", &gamma, gamma);
-		if(flag && (gamma > 0.0)) {
-			snprintf(obuff, obuff_len, "gamma set to %f", gamma); log_fxn(LEVEL_INFO, obuff); /* also sent to client */
-		}
-		server->send_minimal_http_reply(fd, obuff, strlen(obuff));
-	} else if(n >= 2 && elements[0] == "GET" && elements[1] == "/image.jpg") {
-	// server->send_minimal_http_image(fd, compressed_image);
-	} else if(n >= 3 && elements[0] == "GET" && elements[1] == "/program_control") {
-		bool flag;
-		snprintf(obuff, obuff_len, "no parameters parsed");
-		std::string value;
-
-	/* kill the application by calling stop()? */
-		flag = parse_string(elements.at(2).c_str(), "app", &value, value);
-		if(value == "kill") {
-			snprintf(obuff, obuff_len, "shutting down application...");
-			server->send_minimal_http_reply(fd, obuff, strlen(obuff));
-			stop(0);
-			return true;
-		}
-
-	/* normal session control */
-		flag = parse_string(elements.at(2).c_str(), "session", &value, value);
-		if(value == "query") {
-			std::string query_results;
-			snprintf(obuff, obuff_len, "SESSION QUERY: state = %s", query_results.c_str());
-		} else if(value == "stop") {
-			snprintf(obuff, obuff_len, "http: session stop requested");
-		} else if(value == "pause") {
-			snprintf(obuff, obuff_len, "http: session pause requested");
-		} else if(value == "resume") {
-			snprintf(obuff, obuff_len, "http: session resume requested");
-		}
-		server->send_minimal_http_reply(fd, obuff, strlen(obuff));
 	}
+
+	if(n < 3) { return false; } /* from here out, we need some arguments in the form key=value */
+
+	if(elements[1] == "/control.html") {
+		snprintf(obuff, obuff_len, "NO PARAMETERS PARSED");
+		int dac_setting = -1;
+		bool flag = parse_integer(elements.at(2).c_str(), "exposure", &dac_setting, dac_setting);
+		if(flag && (dac_setting > 0)) {
+			snprintf(obuff, obuff_len, "new dac setting = %d", dac_setting);
+			server->send_minimal_http_reply(fd, obuff, strlen(obuff));
+		}
+	}
+
 	return true;
 }
 
@@ -72,8 +51,23 @@ bool process_incoming_http(RemoteControl *server, int fd, std::vector<std::strin
 
 int main(int argc, char **argv) {
 
-	RemoteControl *remoteControl;
+	int server_port = 8080;
 
+	for(i=1;i<argc;++i) {
+		syslog(LOG_NOTICE, "%d: %s", i, argv[i]);
+		if(strcmp(argv[i], "-debug") == 0) debug = true;
+		else if(strcmp(argv[i], "-verbose") == 0) verbose = true;
+		else if(strcmp(argv[i], "-server") == 0) server_port = atoi(argv[++i]);
+	}
+
+	RemoteControl *remote_control = new RemoteControl(port);
+	remote_control->register_callback(process_incoming_http, 
+
+	remoteControl->init();
+
+	while(running) {
+		sleep(1);
+	}
 }
 
 #if 0
@@ -466,14 +460,6 @@ int main(int argc, char **argv) {
 	snprintf(logbuff, logbuff_length, "hostname = %s", hostname);
 	log_fxn(LEVEL_INFO, logbuff);
 
-/* autoexposure */
-	if(target_mean > 1.0) {
-		target_mean = target_mean / 256.0;
-		snprintf(logbuff, logbuff_length, 
-			"target mean specified in units [0,256]. normalized to %5.3f", target_mean);
-		log_fxn(LEVEL_INFO, logbuff);
-	}
-
 	pthread_t thread;
 	cpu_set_t cpu_set;
 	unsigned int cpu_mask, camera_incoming_thread_cpu_mask = 0, camera_outgoing_thread_cpu_mask = 0, 
@@ -497,74 +483,9 @@ int main(int argc, char **argv) {
 	openlog(logName, LOG_PID, LOG_DAEMON);
 	syslog(LOG_NOTICE, "%s started", logName);
 
-	Camera *camera = new Camera(device, width, height, log_fxn, camera_type); /* jsv. make standard log_fxn */
-	camera->debug = debug;
-
-	if(cfile.length()) {
-		printf("calibration file = [%s]\n", cfile.c_str());
-		FileStorage fs(cfile.c_str(), FileStorage::READ);
-		fs["Camera_Matrix"] >> camera_matrix;
-		fs["Distortion_Coefficients"] >> dist_coeffs;
-		printf("camera matrix = \n");
-		std::cout << camera_matrix;
-		std::cout << dist_coeffs;
-		calibrate = true;
-	}
-
         createPidFile(device);
 	signal(SIGINT, stop); /* ^C  exception handling */ 
 	signal(SIGTERM, stop); /* exception handling */ 
-
-/* any compression */
-	if(compression_scheme != Camera::COMPRESSION_NONE) {
-		std::vector<int> params = std::vector<int>(1);
-		params[0] = compression_quality;
-		camera->set_compression(Camera::COMPRESSION_JPEG, params);
-		printf("camera configured for compression scheme %d with quality %d\n",
-			compression_scheme, compression_quality);
-	}
-
-	make_gamma_lut(gamma, gamma_lut, gamma_lut_size);
-
-	uint64_t now = get_time_ms();
-	uint64_t begin_time = now;
-
-	Statistics stats;
-
-	stats.threshold = 65535; /* don't forget to initialize threshold */
-
-	DisplayParams *display_params = 0;
-	int n_capture_buffers = 0, n_incoming_buffers = 0;
-
-	int isize = height * width * 4, osize = 4 * 1024 * 1024;
-	camera->configure_output_streaming(n_output_buffers, osize, camera_outgoing_thread_cpu_mask);
-	camera->configure_input_streaming(n_input_buffers, isize, camera_incoming_thread_cpu_mask);
-	camera->configure_camera_interface(camera_interface_thread_cpu_mask);
-	camera->set_verbose(verbose);
-	if(camera->init() == false) {
-		snprintf(logbuff, logbuff_length, "camera initialization failure");
-		log_fxn(LEVEL_ERROR, logbuff);
-	}
-
-/* initialize/start the capture session */
-	if(camera->start_capture()) {
-		snprintf(logbuff, logbuff_length, "starting capture session at %"PRIu64"", begin_time);
-		log_fxn(LEVEL_INFO, logbuff);
-	} else {
-		snprintf(logbuff, logbuff_length, "unable to start capture");
-		log_fxn(LEVEL_ERROR, logbuff);
-		return 1;
-	}
-
-	n_capture_buffers = camera->get_n_capture_buffers();
-	n_incoming_buffers = camera->get_n_incoming_buffers();
-	snprintf(logbuff, logbuff_length, "camera configured with %d capture buffers and %d incoming buffers",
-		n_capture_buffers, n_incoming_buffers);
-	log_fxn(LEVEL_INFO, logbuff);
-
-/* region of interest for autoexposure analysis */
-	height = camera->get_height(); /* what was actually granted */
-	width = camera->get_width(); /* what was actually granted */
 
 	if(do_server) {
 		server_params.port = server_port;
@@ -576,120 +497,6 @@ int main(int argc, char **argv) {
 	}
 
 	unsigned char *tmp_buff = new unsigned char[ height * width ]; /* for downshifting image */
-
-	session_state = SessionStateIdle;
-	if(vfile0.length()) { /* if output file specified, start new session */
-		session_state_change_request = SessionStateRequestNew;
-		session_vfile = vfile0;
-	}
-
-	Session *session = 0;
-
-	uint64_t prev_time = begin_time, next_gps_request_time = 0, next_imu_request_time = 0; 
-	int prev_frames = frame_index;
-	bool device_status = true, is_color = camera ? camera->color() : false;
-
-/* region of interest depends on whether we are forward- or rear-facing */
-	capture_roi.frame_rows = height;
-	capture_roi.frame_cols = width;
-	if(use_default_roi) {
-		capture_roi.start_col = 0;
-		capture_roi.end_col = width - 1;
-		capture_roi.start_row = 0;
-		capture_roi.end_row = height - 1;
-		capture_roi.rows = capture_roi.end_row - capture_roi.start_row + 1;
-		capture_roi.cols = capture_roi.end_col - capture_roi.start_col + 1;
-		snprintf(logbuff, logbuff_length, "default capture_roi (%d,%d) X (%d,%d)",
-			capture_roi.start_col, capture_roi.start_row, capture_roi.end_col, capture_roi.end_row);
-		log_fxn(LEVEL_INFO, logbuff);
-	} else if(forward) {
-		capture_roi.start_col = 0;
-		capture_roi.end_col = width - 1;
-		capture_roi.start_row = 1 * height / 4;
-		capture_roi.end_row = 3 * height / 4 - 1;
-		capture_roi.rows = capture_roi.end_row - capture_roi.start_row + 1;
-		capture_roi.cols = capture_roi.end_col - capture_roi.start_col + 1;
-		snprintf(logbuff, logbuff_length, "forward-facing capture_roi (%d,%d) X (%d,%d)",
-			capture_roi.start_col, capture_roi.start_row, capture_roi.end_col, capture_roi.end_row);
-		log_fxn(LEVEL_INFO, logbuff);
-	} else if(rear) {
-		capture_roi.start_col = 0;
-		capture_roi.end_col = width - 1;
-		capture_roi.start_row = 1 * height / 4;
-		capture_roi.end_row = 3 * height / 4 - 1;
-		capture_roi.rows = capture_roi.end_row - capture_roi.start_row + 1;
-		capture_roi.cols = capture_roi.end_col - capture_roi.start_col + 1;
-		snprintf(logbuff, logbuff_length, "rear-facing capture_roi (%d,%d) X (%d,%d)",
-			capture_roi.start_col, capture_roi.start_row, capture_roi.end_col, capture_roi.end_row);
-		log_fxn(LEVEL_INFO, logbuff);
-	} else {
-		capture_roi.rows = capture_roi.end_row - capture_roi.start_row + 1;
-		capture_roi.cols = capture_roi.end_col - capture_roi.start_col + 1;
-		snprintf(logbuff, logbuff_length, "user specified capture_roi (%d,%d) X (%d,%d)",
-			capture_roi.start_col, capture_roi.start_row, capture_roi.end_col, capture_roi.end_row);
-		log_fxn(LEVEL_INFO, logbuff);
-	}
-	if(camera) camera->set_capture_region_of_interest(&capture_roi);
-
-	if(enable_hw_ae && autoexposure) { /* autoexposure ROI is attached to hardware concept */
-		exposure_roi.start_col = 0;
-		exposure_roi.end_col = width - 1;
-		exposure_roi.start_row = 1 * height / 4;
-		exposure_roi.end_row = 3 * height / 4 - 1;
-		exposure_roi.rows = exposure_roi.end_row - exposure_roi.start_row + 1;
-		exposure_roi.cols = exposure_roi.end_col - exposure_roi.start_col + 1;
-		camera->set_autoexposure_region_of_interest(&exposure_roi);
-	} else if(autoexposure) { /* autoexposure ROI is logical window into delivered frame buffer */ 
-		exposure_roi.start_col = 0;
-		exposure_roi.end_col = capture_roi.cols - 1;
-		exposure_roi.start_row = 0; 
-		exposure_roi.end_row = capture_roi.rows - 1;
-		exposure_roi.rows = exposure_roi.end_row - exposure_roi.start_row + 1;
-		exposure_roi.cols = exposure_roi.end_col - exposure_roi.start_col + 1;
-		// if(autoexposure) initialize_autoexposure();
-	}
-
-/* the thumbnail ROI is logical window into delivered frame buffer; it is not attached to hardware concept */
-	RegionOfInterest thumbnail_roi;
-	thumbnail_roi.start_row = 0;
-	thumbnail_roi.start_col = 0;
-	thumbnail_roi.end_row = capture_roi.rows - 1;
-	thumbnail_roi.end_col = capture_roi.cols - 1;
-	thumbnail_roi.rows = capture_roi.rows;
-	thumbnail_roi.cols = capture_roi.cols;
-	thumbnail_roi.skip_rows = 4;
-	thumbnail_roi.skip_cols = 4;
-
-	display_params = new DisplayParams;
-	memset(display_params, 0, sizeof(DisplayParams));
-	display_params->gamma_lut = gamma_lut;
-	display_params->gamma_lut_size = gamma_lut_size;
-	display_params->roi = &capture_roi;
-	if(display) {
-		display_params->work_buffer = new unsigned char [ height * width ];
-		display_params->window_name = "main";
-		camera->register_callback(display_fxn, display_params);
-	}
-
-	uint64_t thumbnail_timeout = now + delta_thumbnail_time;
-
-	if(do_thumbnails) {
-		snprintf(logbuff, logbuff_length, "thumbnails = [%s]. delta = %dn", tfile0.c_str(), delta_thumbnail_time);
-	}
-
-	camera_type = camera->get_type(); /* update camera type */
-
-	ReadWriteRegisterCallbackParams read_register_callback_params;
-	read_register_callback_params.fxn = read_m021_register_callback;
-	read_register_callback_params.ext = (void *)0;
-
-	ReadWriteRegisterCallbackParams write_register_callback_params;
-	write_register_callback_params.fxn = write_m021_register_callback;
-	write_register_callback_params.ext = (void *)0;
-
-	M021Registers m021_registers;
-
-	int set_exposure_countdown = 0;
 
 	if(exposure > 0) { /* set on command line */
 		camera->write_m021_register(M021_COARSE_INTEGRATION_TIME_REGISTER, exposure); 

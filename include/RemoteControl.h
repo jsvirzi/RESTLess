@@ -1,7 +1,6 @@
 #ifndef MINISERVER_H
 #define MINISERVER_H
 
-#include <opencv2/core/core.hpp>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
@@ -39,11 +38,6 @@ class RemoteControl {
 		void *ext;
 	} CallbackParams;
 
-	typedef struct {
-		char *logbuff;
-		int port, logbuff_length, sleep_wait, run, thread_started;
-	} ServerParams;
-
 	enum {
 		LOG_LEVEL_DEBUG = 0,
 		LOG_LEVEL_WARNING,
@@ -53,6 +47,13 @@ class RemoteControl {
 
 	RemoteControl(int port, int max_sockets = MAXSOCKETS);
 	~RemoteControl();
+	bool register_callback(CallbackFxn *fxn, void *ext);
+	bool init();
+
+	private: 
+	pthread_t tid;
+	int sleep_wait, run, thread_started;
+	ServerParams server_params;
 	int initialize_socket_map();
 	int map_socket(int fd);
 	int unmap_socket(int fd);
@@ -62,12 +63,11 @@ class RemoteControl {
 	bool close();
 	bool process();
 	bool verbose;
-	bool register_callback(CallbackFxn *fxn, void *ext);
 	bool send_minimal_http_reply(int fd, void *buff, int nbytes);
 	bool send_minimal_http_image(int fd, std::vector<uchar> &img_buff);
 	bool (*log_fxn)(int level, const char *msg);
 	private:
-	static void server_loop(ServerParams *server_params);
+	static void server_loop();
 	std::vector<CallbackParams> callback_params;
 	int server_version;
 	int socket_keep_alive; /* keep a socket alive for 5 seconds after last activity */
@@ -75,8 +75,8 @@ class RemoteControl {
 	int *socket_index;
 	int *socket_sunset;
 	int n_sockets;
-	char *reply_buffer, *logbuff;
-	int reply_buffer_length, logbuff_len;
+	char *reply_buffer, *log_buff;
+	int reply_buffer_length, log_buff_length;
 	struct sockaddr_in cli_addr;
 	struct sockaddr_in srv_addr;
 	int n, sockfd, port; 
