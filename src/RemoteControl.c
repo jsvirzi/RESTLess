@@ -1,10 +1,164 @@
 #include <RemoteControl.h>
 
+#include <stdlib.h>
+
+static void *server_loop(void *ext) {
+
+	int reply_buffer_length = params->reply_buffer_length;
+	int log_buff_length = params->log_buff_length;
+
+	int server_version;
+	int socket_keep_alive; /* keep a socket alive for 5 seconds after last activity */
+/* these two must keep lockstep. jsv make into structures */
+	int *socket_index;
+	int *socket_sunset;
+	int n_sockets;
+	char *reply_buffer = new char [ reply_buffer_length ];
+	struct sockaddr_in cli_addr;
+	struct sockaddr_in srv_addr;
+	int n, sockfd, port; 
+	socklen_t clilen;
+	bool status;
+/* easier to keep track */
+	struct pollfd poll_fd;
+	std::vector<struct pollfd> poll_fds;
+/* this is what the ioctl call wants to see */
+#define POLLSIZE 32
+	struct pollfd poll_set[POLLSIZE];
+	int num_fds;
+
+	RemoteControl::ServerLoopParams *params = (RemoteControl::ServerLoopParams *)ext;
+
+	char *log_buff = params->log_buff;
+
+	snprintf(log_buff, log_buff_length, "starting server service");
+	log_fxn(RemoteControl::LOG_LEVEL_INFO, log_buff);
+
+	RemoteControl::CallbackExt server_callback_ext;
+
+	*params->run = 1;
+	*params->thread_running = 1;
+
+	while(*params->run) {
+
+		usleep(sleep_wait); /* loop pacer */
+
+		int i, n_read, curtime = time(0);
+
+		if(n_sockets > 0) printf("%d sockets open\n", n_sockets);
+
+for(i=0;i<n_sockets;++i) printf("socket_index(%d) = %d\n", i, socket_index[i]);
+		num_fds = poll_fds.size();
+for(i=0;i<num_fds;++i) printf("poll socket(%d) = %d\n", i, poll_fds.at(i).fd);
+
+		/* the first one is always *sockfd* */
+
+		num_fds = 0;
+
+		memset(&poll_set[num_fds], 0, sizeof(pollfd));
+		poll_set[num_fds].fd = sockfd;
+		poll_set[num_fds].events = POLLIN;
+		++num_fds;
+		
+		std::vector<struct pollfd>::const_iterator it, last = poll_fds.end();
+		for(it = poll_fds.begin();it != last;++it) {
+			memset(&poll_set[num_fds], 0, sizeof(pollfd));
+			poll_set[num_fds].fd = it->fd;
+			poll_set[num_fds].events = it->events;
+			++num_fds;
+		}
+
+		poll(poll_set, num_fds, 1000);
+
+		poll_fds.clear();
+
+		for(i=1;i<num_fds;++i) {
+
+			int fd = poll_set[i].fd;
+
+		/* check for unused sockets, e.g. - those that have gone some time w/o activity */
+			int sunset = get_socket_sunset(fd);
+			if((0 < sunset) && (sunset < curtime)) {
+				unmap_socket(fd); /* closes fd */
+printf("socket %d timeout. closed\n", fd);
+				continue;
+			} else if(sunset < 0) {
+printf("error: socket %d multiply mapped\n", fd); /* jsv. not sure about what action to take */
+			}
+
+		/* nothing to do. put this back into the pool and move on */
+			if((poll_set[i].revents & POLLIN) == 0) {
+				poll_fd.fd = poll_set[i].fd;
+				poll_fd.events = POLLIN;
+				poll_fds.push_back(poll_fd);
+				continue;
+			}
+
+		/* accept any incoming requests. should only happen when i = 0 */ 
+			ioctl(poll_set[i].fd, FIONREAD, &n_read);
+			if(n_read == 0) {
+				unmap_socket(poll_set[i].fd); /* closes fd */
+			} else {
+			/* new timeout based on recent activity */
+				register_socket_sunset(poll_set[i].fd, socket_keep_alive);
+				bzero(reply_buffer, reply_buffer_length);
+				n = read(poll_set[i].fd, reply_buffer, reply_buffer_length-1);
+				if(n < 0) {
+					snprintf(log_buff, log_buff_length, "ERROR reading from socket");
+					if(log_fxn) log_fxn(RemoteControl::LOG_LEVEL_WARNING, log_buff);
+				}
+printf("received message: [%s]\n", reply_buffer);
+				poll_fd.fd = fd;
+				poll_fd.events = POLLIN;
+				poll_fds.push_back(poll_fd);
+
+				std::vector<std::string> elements;
+				split(elements, reply_buffer, n, " \t\n?;");
+
+				n = elements.size();
+
+// for(i=0;i<n;++i) { printf("element(%d) = [%s]\n", i, elements.at(i).c_str()); }
+
+			/* callbacks */
+				std::vector<CallbackParams>::const_iterator cbiter, cblast = callback_params.end();
+				for(cbiter = callback_params.begin();cbiter != cblast; ++cbiter) {
+					CallbackFxn *fxn = cbiter->fxn;
+					void *ext = cbiter->ext;
+					(*fxn)(this, fd, elements, ext);
+				}
+
+			}
+		}
+
+		/* accept any incoming requests */
+		int client_sockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+		while(client_sockfd > 0) {
+if(verbose) printf("accepted connection client = %d bound to server = %d\n", client_sockfd, sockfd);
+			set_nonblocking(client_sockfd);
+			memset(&poll_fd, 0, sizeof(poll_fd));
+			poll_fd.fd = client_sockfd;
+			poll_fd.events = POLLIN;
+			poll_fds.push_back(poll_fd);
+			map_socket(client_sockfd);
+			register_socket_sunset(client_sockfd, socket_keep_alive);
+if(verbose) printf("adding client on %d (i=%d)\n", client_sockfd, poll_set[i].fd);
+			client_sockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+		}
+
+	}
+
+	delete [] log_buff;
+	delete [] reply_buff;
+
+	*params->thread_running = 0;
+
+}
+
 /* parses an integer from a string in the form HEADER=1234.
 	input: str is the string to parse
 	input: hdr is the string corresponding to the header.
 	in the example within this comment str = "HEADER=1234" and hdr = "HEADER" */
-bool parse_integer(const char *str, const char *hdr, int *result, int dflt) {
+static bool parse_integer(const char *str, const char *hdr, int *result, int dflt) {
 	const char *p = strstr(str, hdr);
 // printf("%s %s %p\n", str, hdr, p);
 	if(p == NULL) {
@@ -39,7 +193,7 @@ bool parse_integer(const char *str, const char *hdr, int *result, int dflt) {
 	input: str is the string to parse
 	input: hdr is the string corresponding to the header.
 	in the example within this comment str = "HEADER=1234" and hdr = "HEADER" */
-bool parse_float(const char *str, const char *hdr, float *result, float dflt) {
+static bool parse_float(const char *str, const char *hdr, float *result, float dflt) {
 	const char *p = strstr(str, hdr);
 // printf("%s %s %p\n", str, hdr, p);
 	if(p == NULL) {
@@ -76,7 +230,7 @@ bool parse_float(const char *str, const char *hdr, float *result, float dflt) {
 	in the example within this comment,
 	str = TEXT="It was the best of times"&AUTHOR="Charles Dickens" and hdr = "TEXT".
 	the function will return the string "It was the best of times" (no quotes) */
-bool parse_string(const char *str, const char *hdr, std::string *result, std::string &dflt) {
+static bool parse_string(const char *str, const char *hdr, std::string *result, std::string &dflt) {
 	const char *p = strstr(str, hdr);
 // printf("%s %s %p\n", str, hdr, p);
 	if(p == NULL) {
@@ -168,8 +322,8 @@ RemoteControl::RemoteControl(int port, int max_sockets) {
 	memset(&cli_addr, 0, sizeof(struct sockaddr_in));
 	memset(&srv_addr, 0, sizeof(struct sockaddr_in));
 
-	logbuff_len = 1024;
-	logbuff = new char [ logbuff_len + 1 ];
+	log_buff_length = 1024;
+	log_buff = new char [ log_buff_length + 1 ];
 
 	log_fxn = 0;
 
@@ -180,20 +334,20 @@ RemoteControl::RemoteControl(int port, int max_sockets) {
 	srv_addr.sin_port = htons(port);
 
 	if((sockfd = socket(AF_INET, SOCK_STREAM,0)) < 0) {
-		snprintf(logbuff, logbuff_len, "error opening socket");
-		if(log_fxn) log_fxn(LOG_LEVEL_ERROR, logbuff);
+		snprintf(log_buff, log_buff_length, "error opening socket");
+		if(log_fxn) log_fxn(LOG_LEVEL_ERROR, log_buff);
 		status = false;
 	}
 
 	if(bind(sockfd, (struct sockaddr *)&srv_addr, sizeof(srv_addr)) < 0) {
-		snprintf(logbuff, logbuff_len, "error opening socket");
-		if(log_fxn) log_fxn(LOG_LEVEL_ERROR, logbuff);
+		snprintf(log_buff, log_buff_length, "error opening socket");
+		if(log_fxn) log_fxn(LOG_LEVEL_ERROR, log_buff);
 		status = false;
 	}
 
 	if(listen(sockfd, 64) < 0) {
-		snprintf(logbuff, logbuff_len, "error opening socket");
-		if(log_fxn) log_fxn(LOG_LEVEL_ERROR, logbuff);
+		snprintf(log_buff, log_buff_length, "error opening socket");
+		if(log_fxn) log_fxn(LOG_LEVEL_ERROR, log_buff);
 		status = false;
 	}
 
@@ -203,13 +357,20 @@ RemoteControl::RemoteControl(int port, int max_sockets) {
 	memset(poll_set, 0, sizeof(poll_set));
 }
 
-bool RemoteControl::init(unsigned int server_thread_cpu_mask) {
+bool RemoteControl::init(unsigned int cpu_mask) {
 	const char *name = "\"RemoteControl\""; // jsv move to include
 
 /* create a new thread for the server loop */
-	int err = pthread_create(&tid, NULL, &server_loop, (void *)0);
+	server_loop_params.log_buff_length = log_buff_length;
+	server_loop_params.log_buff = new char [ server_loop_params.log_buff_length ]; /* thread-safe, its own buffer */
+	server_loop_params.log_fxn = log_fxn;
+	server_loop_params.thread_running = &thread_running;
+	server_loop_params.reply_buff_length = 1024; // jsv move to configurable 
+	server_loop_params.run = &run;
 
-	if(server_thread_cpu_mask) { /* are we requesting this thread to be on a particular core? */
+	int err = pthread_create(&tid, NULL, &server_loop, (void *)server_loop_params);
+
+	if(cpu_mask) { /* are we requesting this thread to be on a particular core? */
 
 		snprintf(log_buff, log_buff_length, "%s configured to run on core mask = 0x8.8%x", name, cpu_mask);
 		if(log_fxn) log_fxn(LOG_LEVEL_INFO, log_buff);
@@ -217,20 +378,20 @@ bool RemoteControl::init(unsigned int server_thread_cpu_mask) {
 		cpu_set_t cpu_set;
 		CPU_ZERO(&cpu_set);
 		for(int i=0;i<32;++i) { if(cpu_mask & (1 << i)) CPU_SET(i, &cpu_set); }
-		err = pthread_setaffinity_np(*thread, sizeof(cpu_set_t), &cpu_set);
+		err = pthread_setaffinity_np(tid, sizeof(cpu_set_t), &cpu_set);
 		if(err) {
 			snprintf(log_buff, log_buff_length, "unable to set thread affinity for %s", name);
-			if(log_fxn) log_fxn(LEVEL_ERROR, log_buff);
+			if(log_fxn) log_fxn(LOG_LEVEL_ERROR, log_buff);
 		}
-		err = pthread_getaffinity_np(*thread, sizeof(cpu_set_t), &cpu_set);
+		err = pthread_getaffinity_np(tid, sizeof(cpu_set_t), &cpu_set);
 		if(err) {
 			snprintf(log_buff, log_buff_length, "unable to get thread affinity for %s", name);
-			if(log_fxn) log_fxn(LEVEL_ERROR, log_buff);
+			if(log_fxn) log_fxn(LOG_LEVEL_ERROR, log_buff);
 		} else {
 			for(int i=0;i<CPU_SETSIZE;++i) {
 				if(CPU_ISSET(i, &cpu_set)) {
 					snprintf(log_buff, log_buff_length, "thread affinity for %s = %d", name, i);
-					if(log_fxn) log_fxn(LEVEL_ERROR, log_buff);
+					if(log_fxn) log_fxn(LOG_LEVEL_ERROR, log_buff);
 				}
 			}
 		}
@@ -243,15 +404,15 @@ bool RemoteControl::init(unsigned int server_thread_cpu_mask) {
 		if(dtime > 5) {
 			snprintf(log_buff, log_buff_length, 
 				"timeout waiting for %s thread to initialize (%d seconds)...", name, dtime);
-			if(log_fxn) (*log_fxn)(LEVEL_ERROR, log_buff);
+			if(log_fxn) (*log_fxn)(LOG_LEVEL_ERROR, log_buff);
 			return false;
 		}
 		snprintf(log_buff, log_buff_length, "waiting for %s thread to initialize (%d seconds)...", name, dtime);
-		if(log_fxn) (*log_fxn)(LEVEL_INFO, log_buff);
+		if(log_fxn) (*log_fxn)(LOG_LEVEL_INFO, log_buff);
 		usleep(1000000);
 	}
 	snprintf(log_buff, log_buff_length, "%s thread successfully initialized", name);
-	if(log_fxn) log_fxn(LEVEL_INFO, log_buff);
+	if(log_fxn) log_fxn(LOG_LEVEL_INFO, log_buff);
 
 	return true;
 }
@@ -262,20 +423,20 @@ bool wait_for_thread_to_stop(pthread_t *thread, int *flag, const char *name, int
 	while(*flag) {
 		if(time(0) > timeout) {
 			snprintf(log->buff, log->buff_length, "CAMERA: %s thread termination timeout", name);
-			if(log->fxn) log->fxn(LEVEL_FATAL, log->buff);
+			if(log->fxn) log->fxn(LOG_LEVEL_FATAL, log->buff);
 			return false;
 		}
 		snprintf(log->buff, log->buff_length, "CAMERA: waiting for %s thread to terminate", name);
-		if(log->fxn) log->fxn(LEVEL_INFO, log->buff);
+		if(log->fxn) log->fxn(LOG_LEVEL_INFO, log->buff);
 		usleep(100000);
 	}
 
 /* and then check the thread function actually returned */
 	snprintf(log->buff, log->buff_length, "shutting down %s service", name);
-	log->fxn(LEVEL_INFO, log->buff);
+	log->fxn(LOG_LEVEL_INFO, log->buff);
 	pthread_join(*thread, (void**) &thread_result);
 	snprintf(log->buff, log->buff_length, "CAMERA: %s service stopped", name);
-	log->fxn(LEVEL_INFO, log->buff);
+	log->fxn(LOG_LEVEL_INFO, log->buff);
 
 	return true;
 }
@@ -394,128 +555,5 @@ bool RemoteControl::close() {
 		::close(it->fd);
 	}
 	return true;
-}
-
-void *RemoteControl::server_loop() {
-
-	snprintf(log_buff, log_buff_length, "starting server service");
-	log_fxn(LOG_LEVEL_INFO, log_buff);
-
-	RemoteControl::CallbackExt server_callback_ext;
-
-	run = 1;
-	thread_running = 1;
-
-	while(run) {
-
-		usleep(sleep_wait);
-
-		int i, n_read, curtime = time(0);
-
-		if(n_sockets > 0) printf("%d sockets open\n", n_sockets);
-
-		for(i=0;i<n_sockets;++i) printf("socket_index(%d) = %d\n", i, socket_index[i]);
-		num_fds = poll_fds.size();
-		for(i=0;i<num_fds;++i) printf("poll socket(%d) = %d\n", i, poll_fds.at(i).fd);
-
-		/* the first one is always *sockfd* */
-
-		num_fds = 0;
-
-		memset(&poll_set[num_fds], 0, sizeof(pollfd));
-		poll_set[num_fds].fd = sockfd;
-		poll_set[num_fds].events = POLLIN;
-		++num_fds;
-		
-		std::vector<struct pollfd>::const_iterator it, last = poll_fds.end();
-		for(it = poll_fds.begin();it != last;++it) {
-			memset(&poll_set[num_fds], 0, sizeof(pollfd));
-			poll_set[num_fds].fd = it->fd;
-			poll_set[num_fds].events = it->events;
-			++num_fds;
-		}
-
-		poll(poll_set, num_fds, 1000);
-
-		poll_fds.clear();
-
-		for(i=1;i<num_fds;++i) {
-
-			int fd = poll_set[i].fd;
-
-		/* check for unused sockets, e.g. - those that have gone some time w/o activity */
-			int sunset = get_socket_sunset(fd);
-			if((0 < sunset) && (sunset < curtime)) {
-				unmap_socket(fd); /* closes fd */
-printf("socket %d timeout. closed\n", fd);
-				continue;
-			} else if(sunset < 0) {
-printf("error: socket %d multiply mapped\n", fd); /* jsv. not sure about what action to take */
-			}
-
-		/* nothing to do. put this back into the pool and move on */
-			if((poll_set[i].revents & POLLIN) == 0) {
-				poll_fd.fd = poll_set[i].fd;
-				poll_fd.events = POLLIN;
-				poll_fds.push_back(poll_fd);
-				continue;
-			}
-
-		/* accept any incoming requests. should only happen when i = 0 */ 
-			ioctl(poll_set[i].fd, FIONREAD, &n_read);
-			if(n_read == 0) {
-				unmap_socket(poll_set[i].fd); /* closes fd */
-			} else {
-			/* new timeout based on recent activity */
-				register_socket_sunset(poll_set[i].fd, socket_keep_alive);
-				bzero(reply_buffer, reply_buffer_length);
-				n = read(poll_set[i].fd, reply_buffer, reply_buffer_length-1);
-				if(n < 0) {
-					snprintf(logbuff, logbuff_len, "ERROR reading from socket");
-					if(log_fxn) log_fxn(LOG_LEVEL_WARNING, logbuff);
-				}
-printf("received message: [%s]\n", reply_buffer);
-				poll_fd.fd = fd;
-				poll_fd.events = POLLIN;
-				poll_fds.push_back(poll_fd);
-
-				std::vector<std::string> elements;
-				split(elements, reply_buffer, n, " \t\n?;");
-
-				n = elements.size();
-
-// for(i=0;i<n;++i) { printf("element(%d) = [%s]\n", i, elements.at(i).c_str()); }
-
-			/* callbacks */
-				std::vector<CallbackParams>::const_iterator cbiter, cblast = callback_params.end();
-				for(cbiter = callback_params.begin();cbiter != cblast; ++cbiter) {
-					CallbackFxn *fxn = cbiter->fxn;
-					void *ext = cbiter->ext;
-					(*fxn)(this, fd, elements, ext);
-				}
-
-			}
-		}
-
-	/* accept any incoming requests */
-	int client_sockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-	while(client_sockfd > 0) {
-if(verbose) printf("accepted connection client = %d bound to server = %d\n", client_sockfd, sockfd);
-		set_nonblocking(client_sockfd);
-		memset(&poll_fd, 0, sizeof(poll_fd));
-		poll_fd.fd = client_sockfd;
-		poll_fd.events = POLLIN;
-		poll_fds.push_back(poll_fd);
-		map_socket(client_sockfd);
-		register_socket_sunset(client_sockfd, socket_keep_alive);
-if(verbose) printf("adding client on %d (i=%d)\n", client_sockfd, poll_set[i].fd);
-		client_sockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-	}
-}
-
-	}
-
-	thread_running = 0;
-
 }
 
