@@ -2,84 +2,65 @@
 
 #include <stdlib.h>
 
+static bool split(std::vector<std::string> &elements, const char *buffer, int len, const char *delims);
+
 static void *server_loop(void *ext) {
-
-	int reply_buffer_length = params->reply_buffer_length;
-	int log_buff_length = params->log_buff_length;
-
-	int server_version;
-	int socket_keep_alive; /* keep a socket alive for 5 seconds after last activity */
-/* these two must keep lockstep. jsv make into structures */
-	int *socket_index;
-	int *socket_sunset;
-	int n_sockets;
-	char *reply_buffer = new char [ reply_buffer_length ];
-	struct sockaddr_in cli_addr;
-	struct sockaddr_in srv_addr;
-	int n, sockfd, port; 
-	socklen_t clilen;
-	bool status;
-/* easier to keep track */
-	struct pollfd poll_fd;
-	std::vector<struct pollfd> poll_fds;
-/* this is what the ioctl call wants to see */
-#define POLLSIZE 32
-	struct pollfd poll_set[POLLSIZE];
-	int num_fds;
 
 	RemoteControl::ServerLoopParams *params = (RemoteControl::ServerLoopParams *)ext;
 
-	char *log_buff = params->log_buff;
+	int log_buff_length = params->log_buff_length;
+	int reply_buff_length = params->reply_buff_length;
+	RemoteControl *that = params->that;
+	char *log_buff = new char [ log_buff_length ]; 
+	char *reply_buff = new char [ reply_buff_length ]; 
 
 	snprintf(log_buff, log_buff_length, "starting server service");
-	log_fxn(RemoteControl::LOG_LEVEL_INFO, log_buff);
-
-	RemoteControl::CallbackExt server_callback_ext;
+	params->log_fxn(RemoteControl::LOG_LEVEL_INFO, log_buff);
 
 	*params->run = 1;
 	*params->thread_running = 1;
 
 	while(*params->run) {
 
-		usleep(sleep_wait); /* loop pacer */
+		usleep(params->sleep_wait); /* loop pacer */
 
 		int i, n_read, curtime = time(0);
 
-		if(n_sockets > 0) printf("%d sockets open\n", n_sockets);
+		if(that->n_sockets > 0) printf("%d sockets open\n", that->n_sockets);
 
-for(i=0;i<n_sockets;++i) printf("socket_index(%d) = %d\n", i, socket_index[i]);
-		num_fds = poll_fds.size();
-for(i=0;i<num_fds;++i) printf("poll socket(%d) = %d\n", i, poll_fds.at(i).fd);
+for(i=0;i<that->n_sockets;++i) printf("socket_index(%d) = %d\n", i, that->socket_index[i]);
+		that->num_fds = that->poll_fds.size();
+for(i=0;i<that->num_fds;++i) printf("poll socket(%d) = %d\n", i, that->poll_fds.at(i).fd);
 
 		/* the first one is always *sockfd* */
 
-		num_fds = 0;
+		that->num_fds = 0;
 
-		memset(&poll_set[num_fds], 0, sizeof(pollfd));
-		poll_set[num_fds].fd = sockfd;
-		poll_set[num_fds].events = POLLIN;
-		++num_fds;
+		memset(&that->poll_set[that->num_fds], 0, sizeof(pollfd));
+		that->poll_set[that->num_fds].fd = that->sockfd;
+		that->poll_set[that->num_fds].events = POLLIN;
+		++that->num_fds;
 		
-		std::vector<struct pollfd>::const_iterator it, last = poll_fds.end();
-		for(it = poll_fds.begin();it != last;++it) {
-			memset(&poll_set[num_fds], 0, sizeof(pollfd));
-			poll_set[num_fds].fd = it->fd;
-			poll_set[num_fds].events = it->events;
-			++num_fds;
+		std::vector<struct pollfd>::const_iterator it, last = that->poll_fds.end();
+		for(it = that->poll_fds.begin();it != last;++it) {
+			memset(&that->poll_set[that->num_fds], 0, sizeof(pollfd));
+			that->poll_set[that->num_fds].fd = it->fd;
+			that->poll_set[that->num_fds].events = it->events;
+			++that->num_fds;
 		}
 
-		poll(poll_set, num_fds, 1000);
+		poll(that->poll_set, that->num_fds, 1000);
 
-		poll_fds.clear();
+		that->poll_fds.clear();
 
-		for(i=1;i<num_fds;++i) {
+		for(i=1;i<that->num_fds;++i) {
 
-			int fd = poll_set[i].fd;
+			int fd = that->poll_set[i].fd;
 
 		/* check for unused sockets, e.g. - those that have gone some time w/o activity */
-			int sunset = get_socket_sunset(fd);
+			int sunset = that->get_socket_sunset(fd);
 			if((0 < sunset) && (sunset < curtime)) {
-				unmap_socket(fd); /* closes fd */
+				that->unmap_socket(fd); /* closes fd */
 printf("socket %d timeout. closed\n", fd);
 				continue;
 			} else if(sunset < 0) {
@@ -87,62 +68,61 @@ printf("error: socket %d multiply mapped\n", fd); /* jsv. not sure about what ac
 			}
 
 		/* nothing to do. put this back into the pool and move on */
-			if((poll_set[i].revents & POLLIN) == 0) {
-				poll_fd.fd = poll_set[i].fd;
-				poll_fd.events = POLLIN;
-				poll_fds.push_back(poll_fd);
+			if((that->poll_set[i].revents & POLLIN) == 0) {
+				that->poll_fd.fd = that->poll_set[i].fd;
+				that->poll_fd.events = POLLIN;
+				that->poll_fds.push_back(that->poll_fd);
 				continue;
 			}
 
 		/* accept any incoming requests. should only happen when i = 0 */ 
-			ioctl(poll_set[i].fd, FIONREAD, &n_read);
+			ioctl(that->poll_set[i].fd, FIONREAD, &n_read);
 			if(n_read == 0) {
-				unmap_socket(poll_set[i].fd); /* closes fd */
+				that->unmap_socket(that->poll_set[i].fd); /* closes fd */
 			} else {
 			/* new timeout based on recent activity */
-				register_socket_sunset(poll_set[i].fd, socket_keep_alive);
-				bzero(reply_buffer, reply_buffer_length);
-				n = read(poll_set[i].fd, reply_buffer, reply_buffer_length-1);
+				that->register_socket_sunset(that->poll_set[i].fd, that->socket_keep_alive);
+				bzero(reply_buff, reply_buff_length);
+				int n = read(that->poll_set[i].fd, reply_buff, reply_buff_length-1);
 				if(n < 0) {
 					snprintf(log_buff, log_buff_length, "ERROR reading from socket");
-					if(log_fxn) log_fxn(RemoteControl::LOG_LEVEL_WARNING, log_buff);
+					if(params->log_fxn) params->log_fxn(RemoteControl::LOG_LEVEL_WARNING, log_buff);
 				}
-printf("received message: [%s]\n", reply_buffer);
-				poll_fd.fd = fd;
-				poll_fd.events = POLLIN;
-				poll_fds.push_back(poll_fd);
+printf("received message: [%s]\n", reply_buff);
+				that->poll_fd.fd = fd;
+				that->poll_fd.events = POLLIN;
+				that->poll_fds.push_back(that->poll_fd);
 
 				std::vector<std::string> elements;
-				split(elements, reply_buffer, n, " \t\n?;");
+				split(elements, reply_buff, n, " \t\n?;");
 
-				n = elements.size();
-
+// n = elements.size();
 // for(i=0;i<n;++i) { printf("element(%d) = [%s]\n", i, elements.at(i).c_str()); }
 
 			/* callbacks */
-				std::vector<CallbackParams>::const_iterator cbiter, cblast = callback_params.end();
-				for(cbiter = callback_params.begin();cbiter != cblast; ++cbiter) {
-					CallbackFxn *fxn = cbiter->fxn;
+				std::vector<RemoteControl::CallbackParams>::const_iterator cbiter, cblast = that->callback_params.end();
+				for(cbiter = that->callback_params.begin();cbiter != cblast; ++cbiter) {
+					RemoteControl::CallbackFxn *fxn = cbiter->fxn;
 					void *ext = cbiter->ext;
-					(*fxn)(this, fd, elements, ext);
+					(*fxn)(that, fd, elements, ext);
 				}
 
 			}
 		}
 
 		/* accept any incoming requests */
-		int client_sockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+		int client_sockfd = accept(that->sockfd, (struct sockaddr *) &that->cli_addr, &that->clilen);
 		while(client_sockfd > 0) {
-if(verbose) printf("accepted connection client = %d bound to server = %d\n", client_sockfd, sockfd);
-			set_nonblocking(client_sockfd);
-			memset(&poll_fd, 0, sizeof(poll_fd));
-			poll_fd.fd = client_sockfd;
-			poll_fd.events = POLLIN;
-			poll_fds.push_back(poll_fd);
-			map_socket(client_sockfd);
-			register_socket_sunset(client_sockfd, socket_keep_alive);
-if(verbose) printf("adding client on %d (i=%d)\n", client_sockfd, poll_set[i].fd);
-			client_sockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+if(that->verbose) printf("accepted connection client = %d bound to server = %d\n", client_sockfd, that->sockfd);
+			that->set_nonblocking(client_sockfd);
+			memset(&that->poll_fd, 0, sizeof(that->poll_fd));
+			that->poll_fd.fd = client_sockfd;
+			that->poll_fd.events = POLLIN;
+			that->poll_fds.push_back(that->poll_fd);
+			that->map_socket(client_sockfd);
+			that->register_socket_sunset(client_sockfd, that->socket_keep_alive);
+if(that->verbose) printf("adding client on %d (i=%d)\n", client_sockfd, that->poll_set[i].fd);
+			client_sockfd = accept(that->sockfd, (struct sockaddr *) &that->cli_addr, &that->clilen);
 		}
 
 	}
@@ -314,9 +294,6 @@ RemoteControl::RemoteControl(int port, int max_sockets) {
 	socket_index = new int [ max_sockets ];
 	socket_sunset = new int [ max_sockets ];
 	n_sockets = 0;
-	reply_buffer_length = 16384; 
-	reply_buffer_length = 4 * 1280 * 960; /* huge for sending images */
-	reply_buffer = new char [ reply_buffer_length ];
 
 	this->port = port; 
 	memset(&cli_addr, 0, sizeof(struct sockaddr_in));
@@ -368,7 +345,7 @@ bool RemoteControl::init(unsigned int cpu_mask) {
 	server_loop_params.reply_buff_length = 1024; // jsv move to configurable 
 	server_loop_params.run = &run;
 
-	int err = pthread_create(&tid, NULL, &server_loop, (void *)server_loop_params);
+	int err = pthread_create(&tid, NULL, &server_loop, (void *)&server_loop_params);
 
 	if(cpu_mask) { /* are we requesting this thread to be on a particular core? */
 
@@ -516,36 +493,38 @@ int RemoteControl::set_nonblocking(int fd) {
 
 /* nbytes indicates how many bytes will be sent immediately after this call */
 bool RemoteControl::send_minimal_http_reply(int fd, void *buff, int nbytes) {
-	snprintf(reply_buffer, reply_buffer_length,
+	int reply_buff_length = 512;
+	char *reply_buff = new char [ reply_buff_length ]; /* jsv. allocate each time? */
+	snprintf(reply_buff, reply_buff,
 		"HTTP/1.1 200 OK\nServer: nauto_server/%d.0\n"
 		"Content-Length: %d\nConnection: close\nContent-Type: text/html\n\n", 
 		server_version, nbytes); /* header + a blank line */
-	write(fd, reply_buffer, strlen(reply_buffer));
+	write(fd, reply_buff, strlen(reply_buff));
 	write(fd, buff, nbytes);
+	delete [] reply_buff;
 	return true;
 }
 
 /* nbytes indicates how many bytes will be sent immediately after this call */
 bool RemoteControl::send_minimal_http_image(int fd, std::vector<uchar> &img_buff) {
+	int reply_buff_length = 512;
+	char *reply_buff = new char [ reply_buff_length ]; /* jsv. allocate each time? */
 	int nbytes = img_buff.size();
-	snprintf(reply_buffer, reply_buffer_length, 
+	snprintf(reply_buff, reply_buff_length, 
 		"HTTP/1.1 200 OK\r\nContent-Type: image/jpg\r\nContent-Length: %d\r\nConnection: keep-alive\r\n\r\n", nbytes);
-	// snprintf(reply_buffer, reply_buffer_length,
-		// "HTTP/1.1 200 OK\nServer: nauto_server/%d.0\n"
-		// "Content-Length: %d\nConnection: close\nContent-Type: text/html\n\n", 
-		// server_version, nbytes); /* header + a blank line */
-	int index = strlen(reply_buffer);
-printf("index=%d nbytes=%d reply_buffer_length=%d\n", index, nbytes, reply_buffer_length);
-	if((index + nbytes) > reply_buffer_length) return false;
-	unsigned char *p = (unsigned char *)&reply_buffer[index];
+	int index = strlen(reply_buff);
+printf("index=%d nbytes=%d reply_buff_length=%d\n", index, nbytes, reply_buff_length);
+	if((index + nbytes) > reply_buff_length) return false;
+	unsigned char *p = (unsigned char *)&reply_buff[index];
 	unsigned char *p0 = p;
 	std::vector<uchar>::const_iterator cit, clast = img_buff.end();
 	for(cit=img_buff.begin();cit!=clast;) *p++ = *cit++;
-printf("sending http buffer [%s]\n", reply_buffer);
-printf("write(fd=%d, buff=%p, nwrite=%d);\n", fd, reply_buffer, index);
-	write(fd, reply_buffer, index);
+printf("sending http buffer [%s]\n", reply_buff);
+printf("write(fd=%d, buff=%p, nwrite=%d);\n", fd, reply_buff, index);
+	write(fd, reply_buff, index);
 printf("write(fd=%d, buff=%p, nwrite=%d);\n", fd, p0, nbytes);
 	write(fd, p0, nbytes);
+	delete [] reply_buff;
 	return true;
 }
 

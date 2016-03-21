@@ -38,6 +38,7 @@ class RemoteControl {
 		char *log_buff;
 		int reply_buff_length, log_buff_length, *run, *thread_running;
 		bool (*log_fxn)(int level, const char *msg);
+		RemoteControl *that; /* this */
 	} ServerLoopParams;
 
 	typedef struct {
@@ -57,7 +58,7 @@ class RemoteControl {
 	bool register_callback(CallbackFxn *fxn, void *ext);
 	bool init(unsigned int cpu_mask);
 
-	private: 
+	// private: 
 	pthread_t tid;
 	ServerLoopParams server_loop_params;
 	int sleep_wait, run, thread_running;
@@ -73,12 +74,32 @@ class RemoteControl {
 	bool send_minimal_http_reply(int fd, void *buff, int nbytes);
 	bool send_minimal_http_image(int fd, std::vector<uchar> &img_buff);
 	bool (*log_fxn)(int level, const char *msg);
-	private:
+	// private:
 	// typedef void *(thread_function)(void *) thread_function;
 	void *(server_loop)(void *);
 	std::vector<CallbackParams> callback_params;
 	char *log_buff;
 	int log_buff_length;
+
+	int server_version;
+	int socket_keep_alive; /* keep a socket alive for 5 seconds after last activity */
+/* these two must keep lockstep. jsv make into structures */
+	int *socket_index;
+	int *socket_sunset;
+	int n_sockets;
+	struct sockaddr_in cli_addr;
+	struct sockaddr_in srv_addr;
+	int n, sockfd, port; 
+	socklen_t clilen;
+	bool status;
+/* easier to keep track */
+	struct pollfd poll_fd;
+	std::vector<struct pollfd> poll_fds;
+/* this is what the ioctl call wants to see */
+#define POLLSIZE 32
+	struct pollfd poll_set[POLLSIZE];
+	int num_fds;
+
 };
 
 #endif
