@@ -23,6 +23,7 @@ static void *server_loop(void *ext) {
 	while(*params->run) {
 
 		usleep(params->sleep_wait); /* loop pacer */
+printf("server_loop\n");
 
 		int i, n_read, curtime = time(0);
 
@@ -345,6 +346,7 @@ bool RemoteControl::init(unsigned int cpu_mask) {
 	server_loop_params.thread_running = &thread_running;
 	server_loop_params.reply_buff_length = 1024; // jsv move to configurable 
 	server_loop_params.run = &run;
+	server_loop_params.that = this; 
 
 	int err = pthread_create(&tid, NULL, &server_loop, (void *)&server_loop_params);
 
@@ -458,6 +460,15 @@ printf("unmap_socket(%d)\n", fd);
 			--n_sockets;
 		} 
 	}
+
+	snprintf(log_buff, log_buff_length, "shutting down server service");
+	log_fxn(LOG_LEVEL_INFO, log_buff);
+	server_loop_params.run = 0;
+	char *thread_result;
+	pthread_join(tid, (void**) &thread_result);
+	snprintf(log_buff, log_buff_length, "server service stopped");
+	log_fxn(LOG_LEVEL_INFO, log_buff);
+
 	return (count == 1) ? 0 : -1;
 }
 

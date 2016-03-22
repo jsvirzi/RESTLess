@@ -2,6 +2,15 @@
 
 #include <syslog.h>
 #include <stdlib.h>
+#include <signal.h>
+
+static bool running = true;
+
+/* when we hit ^C tell main loop to exit */
+static void stop(int sig) {
+	syslog(LOG_INFO, "%d signal received", sig);
+	running = false;
+}
 
 bool debug = false, verbose = false;
 
@@ -57,7 +66,6 @@ bool process_incoming_http(RemoteControl *server, int fd, std::vector<std::strin
 int main(int argc, char **argv) {
 
 	int i, port = 8080;
-	bool running = true;
 
 	for(i=1;i<argc;++i) {
 		syslog(LOG_NOTICE, "%d: %s", i, argv[i]);
@@ -66,16 +74,24 @@ int main(int argc, char **argv) {
 		else if(strcmp(argv[i], "-port") == 0) port = atoi(argv[++i]);
 	}
 
+	signal(SIGINT, stop); /* ^C  exception handling */ 
+	signal(SIGTERM, stop); /* exception handling */ 
+
 	RemoteControl *remote_control = new RemoteControl(port);
 	RemoteControlCallbackExt callback_ext;
 	callback_ext.obuff_len = 1024;
 	remote_control->register_callback(process_incoming_http, &callback_ext);
 
+	remote_control->log_fxn = log_fxn;
 	remote_control->init(0);
 
 	while(running) {
 		sleep(1);
 	}
+
+	remote_control->close();
+	delete remote_control;
+
 }
 
 #if 0
