@@ -338,6 +338,7 @@ bool RemoteControl::init(unsigned int cpu_mask) {
 	const char *name = "\"RemoteControl\""; // jsv move to include
 
 /* create a new thread for the server loop */
+	server_loop_params.sleep_wait = 250000; /* ms */
 	server_loop_params.log_buff_length = log_buff_length;
 	server_loop_params.log_buff = new char [ server_loop_params.log_buff_length ]; /* thread-safe, its own buffer */
 	server_loop_params.log_fxn = log_fxn;
@@ -495,7 +496,7 @@ int RemoteControl::set_nonblocking(int fd) {
 bool RemoteControl::send_minimal_http_reply(int fd, void *buff, int nbytes) {
 	int reply_buff_length = 512;
 	char *reply_buff = new char [ reply_buff_length ]; /* jsv. allocate each time? */
-	snprintf(reply_buff, reply_buff,
+	snprintf(reply_buff, reply_buff_length,
 		"HTTP/1.1 200 OK\nServer: nauto_server/%d.0\n"
 		"Content-Length: %d\nConnection: close\nContent-Type: text/html\n\n", 
 		server_version, nbytes); /* header + a blank line */

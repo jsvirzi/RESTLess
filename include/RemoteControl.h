@@ -36,7 +36,7 @@ class RemoteControl {
 
 	typedef struct {
 		char *log_buff;
-		int reply_buff_length, log_buff_length, *run, *thread_running;
+		int reply_buff_length, log_buff_length, sleep_wait, *run, *thread_running;
 		bool (*log_fxn)(int level, const char *msg);
 		RemoteControl *that; /* this */
 	} ServerLoopParams;
@@ -76,7 +76,7 @@ class RemoteControl {
 	bool (*log_fxn)(int level, const char *msg);
 	// private:
 	// typedef void *(thread_function)(void *) thread_function;
-	void *(server_loop)(void *);
+	// void *(server_loop)(void *);
 	std::vector<CallbackParams> callback_params;
 	char *log_buff;
 	int log_buff_length;
