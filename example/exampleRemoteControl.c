@@ -1,6 +1,7 @@
 #include <RemoteControl.h>
 
 #include <syslog.h>
+#include <stdlib.h>
 
 bool debug = false, verbose = false;
 
@@ -13,37 +14,41 @@ bool log_fxn(int level, const char *msg) {
 /*** begin IPC ***/
 
 typedef struct {
-	char *obuff;
 	int obuff_len;
 } RemoteControlCallbackExt;
 
 bool process_incoming_http(RemoteControl *server, int fd, std::vector<std::string> &elements, void *ext) {
 	RemoteControlCallbackExt *params = (RemoteControlCallbackExt *)ext;
-	char *obuff = params->obuff;
-	int obuff_len = params->obuff_len; 
 	int n = elements.size();
 
 	if(n < 2) { return false; } /* nothing useful */
 
 	if(elements[0] != "GET") { return false; } /* this is all we're using for now */
 
+	int obuff_len = params->obuff_len; 
+	char *obuff = new char [ obuff_len ]; 
+
 	if(elements[1] == "/test.html") {
 		snprintf(obuff, obuff_len, "Welcome, my friend, to the machine!");
 		server->send_minimal_http_reply(fd, obuff, strlen(obuff));
 	}
 
-	if(n < 3) { return false; } /* from here out, we need some arguments in the form key=value */
+	if(n < 3) { /* from here out, we need some arguments in the form key=value */
+		delete [] obuff;
+		return false;
+	}
 
 	if(elements[1] == "/control.html") {
 		snprintf(obuff, obuff_len, "NO PARAMETERS PARSED");
 		int dac_setting = -1;
-		bool flag = parse_integer(elements.at(2).c_str(), "exposure", &dac_setting, dac_setting);
+		bool flag = server->parse_integer(elements.at(2).c_str(), "exposure", &dac_setting, dac_setting);
 		if(flag && (dac_setting > 0)) {
 			snprintf(obuff, obuff_len, "new dac setting = %d", dac_setting);
 			server->send_minimal_http_reply(fd, obuff, strlen(obuff));
 		}
 	}
 
+	delete [] obuff;
 	return true;
 }
 
@@ -51,19 +56,22 @@ bool process_incoming_http(RemoteControl *server, int fd, std::vector<std::strin
 
 int main(int argc, char **argv) {
 
-	int server_port = 8080;
+	int i, port = 8080;
+	bool running = true;
 
 	for(i=1;i<argc;++i) {
 		syslog(LOG_NOTICE, "%d: %s", i, argv[i]);
 		if(strcmp(argv[i], "-debug") == 0) debug = true;
 		else if(strcmp(argv[i], "-verbose") == 0) verbose = true;
-		else if(strcmp(argv[i], "-server") == 0) server_port = atoi(argv[++i]);
+		else if(strcmp(argv[i], "-port") == 0) port = atoi(argv[++i]);
 	}
 
 	RemoteControl *remote_control = new RemoteControl(port);
-	remote_control->register_callback(process_incoming_http, 
+	RemoteControlCallbackExt callback_ext;
+	callback_ext.obuff_len = 1024;
+	remote_control->register_callback(process_incoming_http, &callback_ext);
 
-	remoteControl->init();
+	remote_control->init(0);
 
 	while(running) {
 		sleep(1);

@@ -1,6 +1,7 @@
 INCLUDES=-Iinclude
 LIBS=-Llib -lRemoteControl
 RPATH=$(LIBS)
+CFLAGS=-ggdb
 
 all: lib/libRemoteControl.so example/exampleRemoteControl
 

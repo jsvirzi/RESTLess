@@ -32,6 +32,10 @@ typedef unsigned char uchar;
 class RemoteControl {
 	public:
 
+	bool parse_string(const char *str, const char *hdr, std::string *result, std::string &dflt);
+	bool parse_float(const char *str, const char *hdr, float *result, float dflt);
+	bool parse_integer(const char *str, const char *hdr, int *result, int dflt);
+
 	typedef bool (CallbackFxn)(class RemoteControl *server, int fd, std::vector<std::string> &elements, void *ext);
 
 	typedef struct {

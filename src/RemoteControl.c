@@ -138,7 +138,7 @@ if(that->verbose) printf("adding client on %d (i=%d)\n", client_sockfd, that->po
 	input: str is the string to parse
 	input: hdr is the string corresponding to the header.
 	in the example within this comment str = "HEADER=1234" and hdr = "HEADER" */
-static bool parse_integer(const char *str, const char *hdr, int *result, int dflt) {
+bool RemoteControl::parse_integer(const char *str, const char *hdr, int *result, int dflt) {
 	const char *p = strstr(str, hdr);
 // printf("%s %s %p\n", str, hdr, p);
 	if(p == NULL) {
@@ -173,7 +173,7 @@ static bool parse_integer(const char *str, const char *hdr, int *result, int dfl
 	input: str is the string to parse
 	input: hdr is the string corresponding to the header.
 	in the example within this comment str = "HEADER=1234" and hdr = "HEADER" */
-static bool parse_float(const char *str, const char *hdr, float *result, float dflt) {
+bool RemoteControl::parse_float(const char *str, const char *hdr, float *result, float dflt) {
 	const char *p = strstr(str, hdr);
 // printf("%s %s %p\n", str, hdr, p);
 	if(p == NULL) {
@@ -210,7 +210,7 @@ static bool parse_float(const char *str, const char *hdr, float *result, float d
 	in the example within this comment,
 	str = TEXT="It was the best of times"&AUTHOR="Charles Dickens" and hdr = "TEXT".
 	the function will return the string "It was the best of times" (no quotes) */
-static bool parse_string(const char *str, const char *hdr, std::string *result, std::string &dflt) {
+bool RemoteControl::parse_string(const char *str, const char *hdr, std::string *result, std::string &dflt) {
 	const char *p = strstr(str, hdr);
 // printf("%s %s %p\n", str, hdr, p);
 	if(p == NULL) {
