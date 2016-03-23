@@ -23,7 +23,7 @@ bool log_fxn(int level, const char *msg) {
 /*** begin IPC ***/
 
 typedef struct {
-	int obuff_len;
+	int unused;
 } RemoteControlCallbackExt;
 
 bool process_incoming_http(RemoteControl *server, int fd, std::vector<std::string> &elements, void *ext) {
@@ -34,30 +34,33 @@ bool process_incoming_http(RemoteControl *server, int fd, std::vector<std::strin
 
 	if(elements[0] != "GET") { return false; } /* this is all we're using for now */
 
-	int obuff_len = params->obuff_len; 
-	char *obuff = new char [ obuff_len ]; 
-
 	if(elements[1] == "/test.html") {
-		snprintf(obuff, obuff_len, "Welcome, my friend, to the machine!");
-		server->send_minimal_http_reply(fd, obuff, strlen(obuff));
+		const char *test_string = "Welcome, my friend, to the machine!";
+		int obuff_len = strlen(test_string);
+		char *obuff = new char [ obuff_len ]; 
+		snprintf(obuff, obuff_len, "%s", test_string); 
+		server->send_minimal_http_reply(fd, obuff, strlen(obuff), true); // delete buff after send
+		return true;
 	}
 
 	if(n < 3) { /* from here out, we need some arguments in the form key=value */
-		delete [] obuff;
 		return false;
 	}
 
 	if(elements[1] == "/control.html") {
+		int obuff_len = 256;
+		char *obuff = new char [ obuff_len ]; 
 		snprintf(obuff, obuff_len, "NO PARAMETERS PARSED");
 		int dac_setting = -1;
 		bool flag = server->parse_integer(elements.at(2).c_str(), "exposure", &dac_setting, dac_setting);
 		if(flag && (dac_setting > 0)) {
 			snprintf(obuff, obuff_len, "new dac setting = %d", dac_setting);
-			server->send_minimal_http_reply(fd, obuff, strlen(obuff));
+			server->send_minimal_http_reply(fd, obuff, strlen(obuff), true); // delete buff after send
+			return true;
 		}
+		delete [] obuff;
 	}
 
-	delete [] obuff;
 	return true;
 }
 
@@ -79,7 +82,7 @@ int main(int argc, char **argv) {
 
 	RemoteControl *remote_control = new RemoteControl(port);
 	RemoteControlCallbackExt callback_ext;
-	callback_ext.obuff_len = 1024;
+	callback_ext.unused = -1;
 	remote_control->register_callback(process_incoming_http, &callback_ext);
 
 	remote_control->log_fxn = log_fxn;

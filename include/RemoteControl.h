@@ -75,7 +75,8 @@ class RemoteControl {
 	bool close();
 	bool process();
 	bool verbose;
-	bool send_minimal_http_reply(int fd, void *buff, int nbytes);
+	bool send_minimal_http_reply(int fd, char *buff, int nbytes, bool delete_flag);
+	bool send_minimal_http_reply(int fd, unsigned char *buff, int nbytes, bool delete_flag);
 	bool send_minimal_http_image(int fd, std::vector<uchar> &img_buff);
 	bool (*log_fxn)(int level, const char *msg);
 	// private:

@@ -461,14 +461,6 @@ printf("unmap_socket(%d)\n", fd);
 		} 
 	}
 
-	snprintf(log_buff, log_buff_length, "shutting down server service");
-	log_fxn(LOG_LEVEL_INFO, log_buff);
-	server_loop_params.run = 0;
-	char *thread_result;
-	pthread_join(tid, (void**) &thread_result);
-	snprintf(log_buff, log_buff_length, "server service stopped");
-	log_fxn(LOG_LEVEL_INFO, log_buff);
-
 	return (count == 1) ? 0 : -1;
 }
 
@@ -504,7 +496,11 @@ int RemoteControl::set_nonblocking(int fd) {
 }
 
 /* nbytes indicates how many bytes will be sent immediately after this call */
-bool RemoteControl::send_minimal_http_reply(int fd, void *buff, int nbytes) {
+bool RemoteControl::send_minimal_http_reply(int fd, char *buff, int nbytes, bool delete_flag) {
+	return send_minimal_http_reply(fd, (unsigned char *)buff, nbytes, delete_flag);
+}
+
+bool RemoteControl::send_minimal_http_reply(int fd, unsigned char *buff, int nbytes, bool delete_flag) {
 	int reply_buff_length = 512;
 	char *reply_buff = new char [ reply_buff_length ]; /* jsv. allocate each time? */
 	snprintf(reply_buff, reply_buff_length,
@@ -514,6 +510,7 @@ bool RemoteControl::send_minimal_http_reply(int fd, void *buff, int nbytes) {
 	write(fd, reply_buff, strlen(reply_buff));
 	write(fd, buff, nbytes);
 	delete [] reply_buff;
+	if(delete_flag) delete [] buff;
 	return true;
 }
 
@@ -545,6 +542,15 @@ bool RemoteControl::close() {
 	for(it = poll_fds.begin();it != last;++it) {
 		::close(it->fd);
 	}
+
+	snprintf(log_buff, log_buff_length, "shutting down server service");
+	log_fxn(LOG_LEVEL_INFO, log_buff);
+	server_loop_params.run = 0;
+	char *thread_result;
+	pthread_join(tid, (void**) &thread_result);
+	snprintf(log_buff, log_buff_length, "server service stopped");
+	log_fxn(LOG_LEVEL_INFO, log_buff);
+
 	return true;
 }
 
