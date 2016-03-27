@@ -23,14 +23,103 @@ bool log_fxn(int level, const char *msg) {
 /*** begin IPC ***/
 
 typedef struct {
-	int unused;
+	int fd, state, nbytes, bytes_expected;
+	unsigned char *buff;
 } RemoteControlCallbackExt;
 
-bool process_incoming_http(RemoteControl *server, int fd, std::vector<std::string> &elements, void *ext) {
+#if 0
+
+// POST / HTTP/1.1
+// User-Agent: curl/7.35.0
+// Host: localhost:8100
+// Accept: */*
+// Content-Length: 226
+// Expect: 100-continue
+// 84 chars // Content-Type: multipart/form-data; boundary=------------------------f9bf9d3c2e8fc08a
+// 
+// 42 chars // --------------------------f9bf9d3c2e8fc08a
+// 71 chars // Content-Disposition: form-data; name="fileupload"; filename="test.html"
+// 23 chars // Content-Type: text/html
+// 
+// 34 chars // Welcome, my friend, to the machine
+// 44 chars // --------------------------f9bf9d3c2e8fc08a--
+// 
+
+#endif
+
+bool parse_field(const char *msg, const char *field, char *str, int max_chars) {
+	std::string haystack = msg, needle = field;
+	size_t pos = haystack.find(needle);
+	if(pos == std::string::npos) return false;
+	pos = pos + needle.length();
+	bool last = (haystack[pos] == 0) || (haystack[pos] == 0xd) || (haystack[pos] == 0xa) || (haystack[pos] == ';');
+	int i;
+	for(i=0;i<(max_chars-1)&&!last;++i) { /* reserve room for null termination */
+		str[i] = haystack[pos];
+		++pos;
+		last = (haystack[pos] == 0) || (haystack[pos] == 0xd) || (haystack[pos] == 0xa) || (haystack[pos] == ';');
+	}
+	str[i] = 0;
+	// printf("parse_field(%s, %s, %p, %d) returns %s\n", msg, field, str, max_chars, str); 
+	return true;
+}
+
+bool send_minimal_http_continue(int fd) {
+	int reply_buff_length = 512;
+	char *reply_buff = new char [ reply_buff_length ]; /* jsv. allocate each time? */
+	snprintf(reply_buff, reply_buff_length, "HTTP/1.1 100 Continue\n\n");
+	write(fd, reply_buff, strlen(reply_buff));
+	delete [] reply_buff;
+	return true;
+}
+
+bool process_incoming_http(RemoteControl *server, int fd, unsigned char *incoming_buffer, int nbytes, std::vector<std::string> &elements, void *ext) {
+
 	RemoteControlCallbackExt *params = (RemoteControlCallbackExt *)ext;
 	int n = elements.size();
 
+	if(params->fd == fd) {
+		printf("callback with %d bytes\n", nbytes);
+		memcpy(params->buff + params->nbytes, incoming_buffer, params->nbytes);
+		params->nbytes += nbytes;
+		if(params->nbytes >= params->bytes_expected) {
+			printf("we are done %d vs %d\n", params->nbytes, params->bytes_expected);
+			params->fd = 0;
+		}
+	}
+
 	if(n < 2) { return false; } /* nothing useful */
+
+/* POST messages */
+
+printf("=== [%s] === [%s] ===\n", elements[0].c_str(), elements[1].c_str());
+	
+	if(elements[0] == "POST" && elements[1] == "/upload.html") {
+printf("received POST\n");
+		char str[1024];
+		str[0] = 0;
+		const char *header = "Content-Length: ";
+		parse_field((char *)incoming_buffer, header, str, sizeof(str));
+		int nbytes = atoi(str);
+printf("%s => [%s] = %d\n", header, str, nbytes);
+		params->fd = fd;
+		params->nbytes = 0;
+		params->bytes_expected = nbytes;
+		params->buff = new unsigned char [ nbytes ];
+		header = "Content-Disposition: ";
+		parse_field((char *)incoming_buffer, header, str, sizeof(str));
+printf("%s => [%s]\n", header, str);
+		header = "Content-Type: ";
+		parse_field((char *)incoming_buffer, header, str, sizeof(str));
+printf("%s => [%s]\n", header, str);
+		header = "boundary";
+		parse_field((char *)incoming_buffer, header, str, sizeof(str));
+printf("%s => [%s]\n", header, str);
+// multipart/form-data; boundary
+
+		send_minimal_http_continue(fd);
+		return true;
+	} 
 
 	if(elements[0] != "GET") { return false; } /* this is all we're using for now */
 
@@ -52,7 +141,7 @@ bool process_incoming_http(RemoteControl *server, int fd, std::vector<std::strin
 		char *obuff = new char [ obuff_len ]; 
 		snprintf(obuff, obuff_len, "NO PARAMETERS PARSED");
 		int dac_setting = -1;
-		bool flag = server->parse_integer(elements.at(2).c_str(), "exposure", &dac_setting, dac_setting);
+		bool flag = server->parse_integer(elements.at(2).c_str(), "dac", &dac_setting, dac_setting);
 		if(flag && (dac_setting > 0)) {
 			snprintf(obuff, obuff_len, "new dac setting = %d", dac_setting);
 			server->send_minimal_http_reply(fd, obuff, strlen(obuff), true); // delete buff after send
@@ -82,7 +171,9 @@ int main(int argc, char **argv) {
 
 	RemoteControl *remote_control = new RemoteControl(port);
 	RemoteControlCallbackExt callback_ext;
-	callback_ext.unused = -1;
+	callback_ext.fd = 0;
+	callback_ext.state = 0;
+	callback_ext.nbytes = 0;
 	remote_control->register_callback(process_incoming_http, &callback_ext);
 
 	remote_control->log_fxn = log_fxn;

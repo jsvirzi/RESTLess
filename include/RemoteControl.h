@@ -36,7 +36,7 @@ class RemoteControl {
 	bool parse_float(const char *str, const char *hdr, float *result, float dflt);
 	bool parse_integer(const char *str, const char *hdr, int *result, int dflt);
 
-	typedef bool (CallbackFxn)(class RemoteControl *server, int fd, std::vector<std::string> &elements, void *ext);
+	typedef bool (CallbackFxn)(class RemoteControl *server, int fd, unsigned char *incoming_buffer, int nbytes, std::vector<std::string> &elements, void *ext);
 
 	typedef struct {
 		char *log_buff;

@@ -12,7 +12,7 @@ static void *server_loop(void *ext) {
 	int reply_buff_length = params->reply_buff_length;
 	RemoteControl *that = params->that;
 	char *log_buff = new char [ log_buff_length ]; 
-	char *reply_buff = new char [ reply_buff_length ]; 
+	unsigned char *reply_buff = new unsigned char [ reply_buff_length ]; 
 
 	snprintf(log_buff, log_buff_length, "starting server service");
 	params->log_fxn(RemoteControl::LOG_LEVEL_INFO, log_buff);
@@ -23,7 +23,7 @@ static void *server_loop(void *ext) {
 	while(*params->run) {
 
 		usleep(params->sleep_wait); /* loop pacer */
-printf("server_loop\n");
+// printf("server_loop\n");
 
 		int i, n_read, curtime = time(0);
 
@@ -89,13 +89,13 @@ printf("error: socket %d multiply mapped\n", fd); /* jsv. not sure about what ac
 					snprintf(log_buff, log_buff_length, "ERROR reading from socket");
 					if(params->log_fxn) params->log_fxn(RemoteControl::LOG_LEVEL_WARNING, log_buff);
 				}
-printf("received message: [%s]\n", reply_buff);
+printf("received message with length = %d: [%s]\n", n, reply_buff);
 				that->poll_fd.fd = fd;
 				that->poll_fd.events = POLLIN;
 				that->poll_fds.push_back(that->poll_fd);
 
 				std::vector<std::string> elements;
-				split(elements, reply_buff, n, " \t\n?;");
+				split(elements, (char *)reply_buff, n, " \t\n?;");
 
 // n = elements.size();
 // for(i=0;i<n;++i) { printf("element(%d) = [%s]\n", i, elements.at(i).c_str()); }
@@ -105,7 +105,7 @@ printf("received message: [%s]\n", reply_buff);
 				for(cbiter = that->callback_params.begin();cbiter != cblast; ++cbiter) {
 					RemoteControl::CallbackFxn *fxn = cbiter->fxn;
 					void *ext = cbiter->ext;
-					(*fxn)(that, fd, elements, ext);
+					(*fxn)(that, fd, reply_buff, n, elements, ext);
 				}
 
 			}
