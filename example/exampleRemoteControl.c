@@ -23,8 +23,8 @@ bool log_fxn(int level, const char *msg) {
 /*** begin IPC ***/
 
 typedef struct {
-	int fd, state, nbytes, bytes_expected;
-	unsigned char *buff;
+	int fd, state, nbytes, bytes_expected, boundary_size;
+	unsigned char *buff, *boundary;
 } RemoteControlCallbackExt;
 
 #if 0
@@ -79,7 +79,49 @@ bool process_incoming_http(RemoteControl *server, int fd, unsigned char *incomin
 	int n = elements.size();
 
 	if(params->fd == fd) {
-		printf("callback with %d bytes\n", nbytes);
+printf("callback with %d bytes. state = %d\n", nbytes, params->state);
+		int offset = 2;
+		unsigned char *where = incoming_buffer + offset;
+		if(params->state == 1) {
+			char *str = new char [ params->boundary_size + 1 ];
+			memcpy(str, where, params->boundary_size);
+			str[params->boundary_size] = 0;
+			if(memcmp(params->boundary, str, params->boundary_size) == 0) {
+printf("first boundary found\n");
+				offset += params->boundary_size + 2;
+				where += params->boundary_size + 2; /* get past newline = 0xd 0xa */
+				params->state = 2;
+			} else {
+printf("boundary = [%s]\n", params->boundary);
+printf("what i found = [%s]\n", str);
+			}
+			delete [] str;
+		}
+		if(params->state == 2) {
+printf("remaining buffer = [%s]\n", where);
+			unsigned char *str = new unsigned char [ nbytes ];
+			const char *header = "Content-Disposition: ";
+			parse_field((char *)where, header, (char *)str, nbytes);
+printf("%s => [%s]\n", header, str);
+			header = "filename=";
+			parse_field((char *)where, header, (char *)str, nbytes);
+printf("%s => [%s]\n", header, str);
+for(int i=0;i<strlen((char *)where);++i) { printf("%2x ", where[i]); }
+
+			std::string haystack = (char *)where, needle = "\x0d\x0a\x0d\x0a";
+			size_t pos = haystack.find(needle);
+			if(pos != std::string::npos) {
+				pos += sizeof(needle);
+				offset += pos;
+				where += pos;
+printf("pos = %ld. remaining buffer = [%s]\n", pos, where);
+			} else {
+printf("me no findy\n");
+			}
+
+			delete [] str;
+		}
+
 		memcpy(params->buff + params->nbytes, incoming_buffer, params->nbytes);
 		params->nbytes += nbytes;
 		if(params->nbytes >= params->bytes_expected) {
@@ -112,10 +154,17 @@ printf("%s => [%s]\n", header, str);
 		header = "Content-Type: ";
 		parse_field((char *)incoming_buffer, header, str, sizeof(str));
 printf("%s => [%s]\n", header, str);
-		header = "boundary";
+		header = "boundary=";
 		parse_field((char *)incoming_buffer, header, str, sizeof(str));
 printf("%s => [%s]\n", header, str);
 // multipart/form-data; boundary
+		char *boundary = str;
+		nbytes = strlen(boundary);
+		params->boundary_size = nbytes;
+		params->boundary = new unsigned char [ params->boundary_size + 1 ];
+		memcpy(params->boundary, boundary, params->boundary_size + 1);
+
+		params->state = 1; /* sync to header */
 
 		send_minimal_http_continue(fd);
 		return true;
