@@ -76,39 +76,42 @@ bool send_minimal_http_continue(int fd) {
 bool process_incoming_http(RemoteControl *server, int fd, unsigned char *incoming_buffer, int nbytes, std::vector<std::string> &elements, void *ext) {
 
 	RemoteControlCallbackExt *params = (RemoteControlCallbackExt *)ext;
+	std::string haystack, needle;
+	unsigned char *str = new unsigned char [ nbytes + 1 ];
+	unsigned char *tmp = new unsigned char [ nbytes + 1 ];
 	int n = elements.size();
+	int offset = 0;
+	unsigned char *where = incoming_buffer + offset;
 
 	if(params->fd == fd) {
 printf("callback with %d bytes. state = %d\n", nbytes, params->state);
-		int offset = 2;
-		unsigned char *where = incoming_buffer + offset;
 		if(params->state == 1) {
-			char *str = new char [ params->boundary_size + 1 ];
+			offset += 2;
+			where = incoming_buffer + offset;
 			memcpy(str, where, params->boundary_size);
 			str[params->boundary_size] = 0;
 			if(memcmp(params->boundary, str, params->boundary_size) == 0) {
 printf("first boundary found\n");
-				offset += params->boundary_size + 2;
-				where += params->boundary_size + 2; /* get past newline = 0xd 0xa */
-				params->state = 2;
+				offset += (params->boundary_size + 2); /* get past newline = 0xd 0xa */
+				where = incoming_buffer + offset;
+				params->state = 2; /* look for download metadata */
 			} else {
 printf("boundary = [%s]\n", params->boundary);
 printf("what i found = [%s]\n", str);
 			}
-			delete [] str;
 		}
 		if(params->state == 2) {
 printf("remaining buffer = [%s]\n", where);
-			unsigned char *str = new unsigned char [ nbytes ];
 			const char *header = "Content-Disposition: ";
 			parse_field((char *)where, header, (char *)str, nbytes);
 printf("%s => [%s]\n", header, str);
 			header = "filename=";
 			parse_field((char *)where, header, (char *)str, nbytes);
 printf("%s => [%s]\n", header, str);
-for(int i=0;i<strlen((char *)where);++i) { printf("%2x ", where[i]); }
+			snprintf(tmp, "%s%s", header, str);
+// for(int i=0;i<strlen((char *)where);++i) { printf("%2x ", where[i]); }
 
-			std::string haystack = (char *)where, needle = "\x0d\x0a\x0d\x0a";
+			haystack = (char *)where, needle = "\x0d\x0a\x0d\x0a";
 			size_t pos = haystack.find(needle);
 			if(pos != std::string::npos) {
 				pos += sizeof(needle);
@@ -119,7 +122,6 @@ printf("pos = %ld. remaining buffer = [%s]\n", pos, where);
 printf("me no findy\n");
 			}
 
-			delete [] str;
 		}
 
 		memcpy(params->buff + params->nbytes, incoming_buffer, params->nbytes);
@@ -129,6 +131,9 @@ printf("me no findy\n");
 			params->fd = 0;
 		}
 	}
+
+	delete [] str;
+	delete [] tmp;
 
 	if(n < 2) { return false; } /* nothing useful */
 
