@@ -1,12 +1,12 @@
 INCLUDES=-Iinclude
-LIBS=-Llib -lRemoteControl
-RPATH=$(LIBS)
+LIBS=-Llib -lRESTLess
+RPATH=$(PWD)/lib
 CFLAGS=-ggdb
 
-all: lib/libRemoteControl.so example/exampleRemoteControl
+all: lib/libRESTLess.so example/exampleRemoteControl
 
-lib/libRemoteControl.so: src/RemoteControl.c include/RemoteControl.h
-	g++ $(CFLAGS) -pthread -shared -fPIC $(INCLUDES) -o lib/libRemoteControl.so src/RemoteControl.c
+lib/libRESTLess.so: src/RESTLess.c include/RESTLess.h
+	g++ $(CFLAGS) -pthread -shared -fPIC $(INCLUDES) -o lib/libRESTLess.so src/RESTLess.c
 
 example/exampleRemoteControl: example/exampleRemoteControl.c
 	g++ $(CFLAGS) $(INCLUDES) -o example/exampleRemoteControl example/exampleRemoteControl.c $(LIBS) -Wl,-rpath,$(RPATH)
