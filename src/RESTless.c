@@ -1,4 +1,4 @@
-#include <RESTLess.h>
+#include <RESTless.h>
 
 #include <stdlib.h>
 
@@ -6,16 +6,16 @@ static bool split(std::vector<std::string> &elements, const char *buffer, int le
 
 static void *server_loop(void *ext) {
 
-	RemoteControl::ServerLoopParams *params = (RemoteControl::ServerLoopParams *)ext;
+	RESTless::ServerLoopParams *params = (RESTless::ServerLoopParams *)ext;
 
 	int log_buff_length = params->log_buff_length;
 	int reply_buff_length = params->reply_buff_length;
-	RemoteControl *that = params->that;
+	RESTless *that = params->that;
 	char *log_buff = new char [ log_buff_length ]; 
 	unsigned char *reply_buff = new unsigned char [ reply_buff_length ]; 
 
 	snprintf(log_buff, log_buff_length, "starting server service");
-	params->log_fxn(RemoteControl::LOG_LEVEL_INFO, log_buff);
+	params->log_fxn(RESTless::LOG_LEVEL_INFO, log_buff);
 
 	*params->run = 1;
 	*params->thread_running = 1;
@@ -87,7 +87,7 @@ printf("error: socket %d multiply mapped\n", fd); /* jsv. not sure about what ac
 				int n = read(that->poll_set[i].fd, reply_buff, reply_buff_length-1);
 				if(n < 0) {
 					snprintf(log_buff, log_buff_length, "ERROR reading from socket");
-					if(params->log_fxn) params->log_fxn(RemoteControl::LOG_LEVEL_WARNING, log_buff);
+					if(params->log_fxn) params->log_fxn(RESTless::LOG_LEVEL_WARNING, log_buff);
 				}
 printf("received message with length = %d: [%s]\n", n, reply_buff);
 				that->poll_fd.fd = fd;
@@ -101,9 +101,9 @@ printf("received message with length = %d: [%s]\n", n, reply_buff);
 // for(i=0;i<n;++i) { printf("element(%d) = [%s]\n", i, elements.at(i).c_str()); }
 
 			/* callbacks */
-				std::vector<RemoteControl::CallbackParams>::const_iterator cbiter, cblast = that->callback_params.end();
+				std::vector<RESTless::CallbackParams>::const_iterator cbiter, cblast = that->callback_params.end();
 				for(cbiter = that->callback_params.begin();cbiter != cblast; ++cbiter) {
-					RemoteControl::CallbackFxn *fxn = cbiter->fxn;
+					RESTless::CallbackFxn *fxn = cbiter->fxn;
 					void *ext = cbiter->ext;
 					(*fxn)(that, fd, reply_buff, n, elements, ext);
 				}
@@ -139,7 +139,7 @@ if(that->verbose) printf("adding client on %d (i=%d)\n", client_sockfd, that->po
 	input: str is the string to parse
 	input: hdr is the string corresponding to the header.
 	in the example within this comment str = "HEADER=1234" and hdr = "HEADER" */
-bool RemoteControl::parse_integer(const char *str, const char *hdr, int *result, int dflt) {
+bool RESTless::parse_integer(const char *str, const char *hdr, int *result, int dflt) {
 	const char *p = strstr(str, hdr);
 // printf("%s %s %p\n", str, hdr, p);
 	if(p == NULL) {
@@ -174,7 +174,7 @@ bool RemoteControl::parse_integer(const char *str, const char *hdr, int *result,
 	input: str is the string to parse
 	input: hdr is the string corresponding to the header.
 	in the example within this comment str = "HEADER=1234" and hdr = "HEADER" */
-bool RemoteControl::parse_float(const char *str, const char *hdr, float *result, float dflt) {
+bool RESTless::parse_float(const char *str, const char *hdr, float *result, float dflt) {
 	const char *p = strstr(str, hdr);
 // printf("%s %s %p\n", str, hdr, p);
 	if(p == NULL) {
@@ -211,7 +211,7 @@ bool RemoteControl::parse_float(const char *str, const char *hdr, float *result,
 	in the example within this comment,
 	str = TEXT="It was the best of times"&AUTHOR="Charles Dickens" and hdr = "TEXT".
 	the function will return the string "It was the best of times" (no quotes) */
-bool RemoteControl::parse_string(const char *str, const char *hdr, std::string *result, std::string &dflt) {
+bool RESTless::parse_string(const char *str, const char *hdr, std::string *result, std::string &dflt) {
 	const char *p = strstr(str, hdr);
 // printf("%s %s %p\n", str, hdr, p);
 	if(p == NULL) {
@@ -275,19 +275,19 @@ static bool split(std::vector<std::string> &elements, const char *buffer, int le
 	return true;
 }
 
-bool RemoteControl::register_callback(CallbackFxn *fxn, void *ext) {
+bool RESTless::register_callback(CallbackFxn *fxn, void *ext) {
 	CallbackParams params;
 	params.fxn = fxn;
 	params.ext = ext;
 	callback_params.push_back(params);
 };
 
-RemoteControl::~RemoteControl() {
+RESTless::~RESTless() {
 	delete [] socket_index;
 	delete [] socket_sunset;
 }
 
-RemoteControl::RemoteControl(int port, int max_sockets) {
+RESTless::RESTless(int port, int max_sockets) {
 	status = false;
 	server_version = 1;
 	socket_keep_alive = 5; /* keep a socket alive for 5 seconds after last activity */
@@ -335,8 +335,8 @@ RemoteControl::RemoteControl(int port, int max_sockets) {
 	memset(poll_set, 0, sizeof(poll_set));
 }
 
-bool RemoteControl::init(unsigned int cpu_mask) {
-	const char *name = "\"RemoteControl\""; // jsv move to include
+bool RESTless::init(unsigned int cpu_mask) {
+	const char *name = "\"RESTless\""; // jsv move to include
 
 /* create a new thread for the server loop */
 	server_loop_params.sleep_wait = 250000; /* ms */
@@ -422,14 +422,14 @@ bool wait_for_thread_to_stop(pthread_t *thread, int *flag, const char *name, int
 }
 #endif
 
-int RemoteControl::initialize_socket_map() {
+int RESTless::initialize_socket_map() {
 	int i;
 	for(int i=0;i<MAXSOCKETS;++i) socket_index[i] = socket_sunset[i] = 0; 
 	n_sockets = 0;
 	return 0;
 }
 
-int RemoteControl::map_socket(int fd) {
+int RESTless::map_socket(int fd) {
 printf("map_socket(%d)\n", fd);
 	int i;
 /* make sure this socket isn't already being used */
@@ -445,7 +445,7 @@ printf("map_socket(%d)\n", fd);
 
 /* it shouldn't happen, but if it does, 
    unmap_socket() will clean out all instances of the socket fd */
-int RemoteControl::unmap_socket(int fd) {
+int RESTless::unmap_socket(int fd) {
 printf("unmap_socket(%d)\n", fd);
 	if(fd <= 0) return -1;
 	int i, j, count = 1;
@@ -464,7 +464,7 @@ printf("unmap_socket(%d)\n", fd);
 	return (count == 1) ? 0 : -1;
 }
 
-int RemoteControl::get_socket_sunset(int fd) {
+int RESTless::get_socket_sunset(int fd) {
 // printf("get_socket_sunset(%d) n_sockets = %d\n", fd, n_sockets);
 	int i, sunset = 0, count = 0;
 	for(i=0;i<n_sockets;++i) {
@@ -478,7 +478,7 @@ int RemoteControl::get_socket_sunset(int fd) {
 	return (count > 1) ? -1 : sunset;
 }
 
-int RemoteControl::register_socket_sunset(int fd, int timeout) {
+int RESTless::register_socket_sunset(int fd, int timeout) {
 	int i, curtime = time(0), count = 0;
 	for(i=0;i<n_sockets;++i) {
 		if(socket_index[i] == fd) {
@@ -489,18 +489,18 @@ int RemoteControl::register_socket_sunset(int fd, int timeout) {
 	return (count > 1) ? -1 : 0;
 }
 
-int RemoteControl::set_nonblocking(int fd) {
+int RESTless::set_nonblocking(int fd) {
 	int flags = fcntl(fd, F_GETFL, 0);
 	if(flags == -1) flags = 0;
 	return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
 /* nbytes indicates how many bytes will be sent immediately after this call */
-bool RemoteControl::send_minimal_http_reply(int fd, char *buff, int nbytes, bool delete_flag) {
-	return send_minimal_http_reply(fd, (unsigned char *)buff, nbytes, delete_flag);
+bool RESTless::send_minimal_http_reply(int fd, char *buff, int nbytes) {
+	return send_minimal_http_reply(fd, (unsigned char *)buff, nbytes);
 }
 
-bool RemoteControl::send_minimal_http_reply(int fd, unsigned char *buff, int nbytes, bool delete_flag) {
+bool RESTless::send_minimal_http_reply(int fd, unsigned char *buff, int nbytes) {
 	int reply_buff_length = 512;
 	char *reply_buff = new char [ reply_buff_length ]; /* jsv. allocate each time? */
 	snprintf(reply_buff, reply_buff_length,
@@ -510,12 +510,11 @@ bool RemoteControl::send_minimal_http_reply(int fd, unsigned char *buff, int nby
 	write(fd, reply_buff, strlen(reply_buff));
 	write(fd, buff, nbytes);
 	delete [] reply_buff;
-	if(delete_flag) delete [] buff;
 	return true;
 }
 
 /* nbytes indicates how many bytes will be sent immediately after this call */
-bool RemoteControl::send_minimal_http_image(int fd, std::vector<uchar> &img_buff) {
+bool RESTless::send_minimal_http_image(int fd, std::vector<uchar> &img_buff) {
 	int reply_buff_length = 512;
 	char *reply_buff = new char [ reply_buff_length ]; /* jsv. allocate each time? */
 	int nbytes = img_buff.size();
@@ -537,7 +536,7 @@ printf("write(fd=%d, buff=%p, nwrite=%d);\n", fd, p0, nbytes);
 	return true;
 }
 
-bool RemoteControl::close() {
+bool RESTless::close() {
 	std::vector<struct pollfd>::const_iterator it, last = poll_fds.end();
 	for(it = poll_fds.begin();it != last;++it) {
 		::close(it->fd);

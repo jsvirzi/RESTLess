@@ -1,4 +1,4 @@
-#include <RemoteControl.h>
+#include <RESTless.h>
 
 #include <syslog.h>
 #include <stdlib.h>
@@ -25,7 +25,7 @@ bool log_fxn(int level, const char *msg) {
 typedef struct {
 	int fd, state, nbytes, bytes_expected, boundary_size;
 	unsigned char *buff, *boundary;
-} RemoteControlCallbackExt;
+} RESTlessCallbackExt;
 
 #if 0
 
@@ -73,9 +73,9 @@ bool send_minimal_http_continue(int fd) {
 	return true;
 }
 
-bool process_incoming_http(RemoteControl *server, int fd, unsigned char *incoming_buffer, int nbytes, std::vector<std::string> &elements, void *ext) {
+bool process_incoming_http(RESTless *server, int fd, unsigned char *incoming_buffer, int nbytes, std::vector<std::string> &elements, void *ext) {
 
-	RemoteControlCallbackExt *params = (RemoteControlCallbackExt *)ext;
+	RESTlessCallbackExt *params = (RESTlessCallbackExt *)ext;
 	std::string haystack, needle;
 	unsigned char *str = new unsigned char [ nbytes + 1 ];
 	unsigned char *tmp = new unsigned char [ nbytes + 1 ];
@@ -223,8 +223,8 @@ int main(int argc, char **argv) {
 	signal(SIGINT, stop); /* ^C  exception handling */ 
 	signal(SIGTERM, stop); /* exception handling */ 
 
-	RemoteControl *remote_control = new RemoteControl(port);
-	RemoteControlCallbackExt callback_ext;
+	RESTless *remote_control = new RESTless(port);
+	RESTlessCallbackExt callback_ext;
 	callback_ext.fd = 0;
 	callback_ext.state = 0;
 	callback_ext.nbytes = 0;

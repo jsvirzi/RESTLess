@@ -29,20 +29,20 @@ typedef unsigned char uchar;
 #include <string>
 
 #define MAXSOCKETS 64
-class RemoteControl {
+class RESTless {
 	public:
 
 	bool parse_string(const char *str, const char *hdr, std::string *result, std::string &dflt);
 	bool parse_float(const char *str, const char *hdr, float *result, float dflt);
 	bool parse_integer(const char *str, const char *hdr, int *result, int dflt);
 
-	typedef bool (CallbackFxn)(class RemoteControl *server, int fd, unsigned char *incoming_buffer, int nbytes, std::vector<std::string> &elements, void *ext);
+	typedef bool (CallbackFxn)(class RESTless *server, int fd, unsigned char *incoming_buffer, int nbytes, std::vector<std::string> &elements, void *ext);
 
 	typedef struct {
 		char *log_buff;
 		int reply_buff_length, log_buff_length, sleep_wait, *run, *thread_running;
 		bool (*log_fxn)(int level, const char *msg);
-		RemoteControl *that; /* this */
+		RESTless *that; /* this */
 	} ServerLoopParams;
 
 	typedef struct {
@@ -57,8 +57,8 @@ class RemoteControl {
 		LOG_LEVEL_INFO
 	};
 
-	RemoteControl(int port, int max_sockets = MAXSOCKETS);
-	~RemoteControl();
+	RESTless(int port, int max_sockets = MAXSOCKETS);
+	~RESTless();
 	bool register_callback(CallbackFxn *fxn, void *ext);
 	bool init(unsigned int cpu_mask);
 
@@ -75,8 +75,8 @@ class RemoteControl {
 	bool close();
 	bool process();
 	bool verbose;
-	bool send_minimal_http_reply(int fd, char *buff, int nbytes, bool delete_flag);
-	bool send_minimal_http_reply(int fd, unsigned char *buff, int nbytes, bool delete_flag);
+	bool send_minimal_http_reply(int fd, char *buff, int nbytes);
+	bool send_minimal_http_reply(int fd, unsigned char *buff, int nbytes);
 	bool send_minimal_http_image(int fd, std::vector<uchar> &img_buff);
 	bool (*log_fxn)(int level, const char *msg);
 	// private:

@@ -1,4 +1,4 @@
-# RESTLess
+# RESTless
 
 A lightweight utility for giving embedded systems a RESTful API
 
