@@ -21,10 +21,8 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-// #include <uchar.h>
 typedef unsigned char uchar;
 
-#include <iostream>
 #include <vector>
 #include <string>
 
@@ -59,18 +57,18 @@ class RESTless {
 
 	RESTless(int port, int max_sockets = MAXSOCKETS);
 	~RESTless();
-	bool register_callback(CallbackFxn *fxn, void *ext);
+	bool registerCallback(CallbackFxn *fxn, void *ext);
 	bool init(unsigned int cpu_mask);
 
 	// private: 
 	pthread_t tid;
-	ServerLoopParams server_loop_params;
+	ServerLoopParams serverLoopParams;
 	int sleep_wait, run, thread_running;
 	int initialize_socket_map();
 	int map_socket(int fd);
 	int unmap_socket(int fd);
 	int get_socket_sunset(int fd);
-	int register_socket_sunset(int fd, int timeout);
+	int registerSocketSunset(int fd, int timeout);
 	int set_nonblocking(int fd);
 	bool close();
 	bool process();

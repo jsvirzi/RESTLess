@@ -3,7 +3,8 @@ LIBS=-Llib -lRESTless
 RPATH=$(PWD)/lib
 CFLAGS=-ggdb
 
-all: lib/libRESTless.so example/exampleRemoteControl
+# all: lib/libRESTless.so example/exampleRemoteControl
+all: lib/libRESTless.so 
 
 lib/libRESTless.so: src/RESTless.c include/RESTless.h
 	g++ $(CFLAGS) -pthread -shared -fPIC $(INCLUDES) -o lib/libRESTless.so src/RESTless.c

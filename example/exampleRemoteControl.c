@@ -228,7 +228,7 @@ int main(int argc, char **argv) {
 	callback_ext.fd = 0;
 	callback_ext.state = 0;
 	callback_ext.nbytes = 0;
-	remote_control->register_callback(process_incoming_http, &callback_ext);
+	remote_control->registerCallback(process_incoming_http, &callback_ext);
 
 	remote_control->log_fxn = log_fxn;
 	remote_control->init(0);
@@ -359,13 +359,13 @@ bool thumbnail(void *ibuff, RegionOfInterest *roi, int input_data_format, const 
 
 /* local variables and functions */
 
-bool read_m021_register_callback(ReadWriteRegisterArgs *args, void *ext) {
+bool read_m021_registerCallback(ReadWriteRegisterArgs *args, void *ext) {
 	unsigned int val = *args->p;
 	printf("read_m021_register(0x%x) returns 0x%x = %d\n", args->reg, val, val);
 	return true;
 }
 
-bool write_m021_register_callback(ReadWriteRegisterArgs *args, void *ext) {
+bool write_m021_registerCallback(ReadWriteRegisterArgs *args, void *ext) {
 	printf("write_m021_register(0x%x, 0x%x=%d)\n", args->reg, args->val, args->val);
 	return true;
 }
@@ -731,23 +731,23 @@ int main(int argc, char **argv) {
 			++frame_index;
 
 if(enable_hw_ae && ((frame_index % 60) == 0)) {
-	// camera->read_m021_register(M021_REGISTER, &m021_registers., &read_register_callback_params);
-	// camera->read_m021_register(M021_AE_CTRL_REGISTER, &m021_registers.ae_ctrl, &read_register_callback_params);
-	camera->read_m021_register(M021_COARSE_INTEGRATION_TIME_REGISTER, &m021_registers.coarse_integration_time, &read_register_callback_params);
-	camera->read_m021_register(M021_FINE_INTEGRATION_TIME_REGISTER, &m021_registers.fine_integration_time, &read_register_callback_params);
-	camera->read_m021_register(M021_AE_MEAN_I_REGISTER, &m021_registers.ae_mean_luma, &read_register_callback_params);
-	camera->read_m021_register(M021_AE_TARGET_LUMA_REGISTER, &m021_registers.ae_target_luma, &read_register_callback_params);
-	camera->read_m021_register(M021_AE_COARSE_INTEGRATION_TIME_REGISTER, &m021_registers.ae_coarse_integration_time, &read_register_callback_params);
-	// camera->read_m021_register(M021_AE_ROI_X_START_REGISTER, &m021_registers.ae_roi_x_start, &read_register_callback_params);
-	// camera->read_m021_register(M021_AE_ROI_Y_START_REGISTER, &m021_registers.ae_roi_y_start, &read_register_callback_params);
-	// camera->read_m021_register(M021_AE_ROI_X_SIZE_REGISTER, &m021_registers.ae_roi_x_size, &read_register_callback_params);
-	// camera->read_m021_register(M021_AE_ROI_Y_SIZE_REGISTER, &m021_registers.ae_roi_y_size, &read_register_callback_params);
-	// camera->read_m021_register(M021_AE_AG_EXPOSURE_HI_REGISTER, &m021_registers.ae_ag_exposure_hi, &read_register_callback_params);
-	// camera->read_m021_register(M021_AE_AG_EXPOSURE_LO_REGISTER, &m021_registers.ae_ag_exposure_lo, &read_register_callback_params);
-	// camera->read_m021_register(M021_AE_MIN_EV_STEP_REGISTER, &m021_registers.ae_min_ev_step, &read_register_callback_params);
-	// camera->read_m021_register(M021_AE_MAX_EV_STEP_REGISTER, &m021_registers.ae_max_ev_step, &read_register_callback_params);
-	// camera->read_m021_register(M021_EMBEDDED_DATA_CTRL_REGISTER, &m021_registers.embedded_data_ctrl, &read_register_callback_params);
-	// camera->read_m021_register(M021_AE_DARK_CURRENT_THRESHOLD_REGISTER, &m021_registers.ae_dark_current_threshold, &read_register_callback_params);
+	// camera->read_m021_register(M021_REGISTER, &m021_registers., &read_registerCallback_params);
+	// camera->read_m021_register(M021_AE_CTRL_REGISTER, &m021_registers.ae_ctrl, &read_registerCallback_params);
+	camera->read_m021_register(M021_COARSE_INTEGRATION_TIME_REGISTER, &m021_registers.coarse_integration_time, &read_registerCallback_params);
+	camera->read_m021_register(M021_FINE_INTEGRATION_TIME_REGISTER, &m021_registers.fine_integration_time, &read_registerCallback_params);
+	camera->read_m021_register(M021_AE_MEAN_I_REGISTER, &m021_registers.ae_mean_luma, &read_registerCallback_params);
+	camera->read_m021_register(M021_AE_TARGET_LUMA_REGISTER, &m021_registers.ae_target_luma, &read_registerCallback_params);
+	camera->read_m021_register(M021_AE_COARSE_INTEGRATION_TIME_REGISTER, &m021_registers.ae_coarse_integration_time, &read_registerCallback_params);
+	// camera->read_m021_register(M021_AE_ROI_X_START_REGISTER, &m021_registers.ae_roi_x_start, &read_registerCallback_params);
+	// camera->read_m021_register(M021_AE_ROI_Y_START_REGISTER, &m021_registers.ae_roi_y_start, &read_registerCallback_params);
+	// camera->read_m021_register(M021_AE_ROI_X_SIZE_REGISTER, &m021_registers.ae_roi_x_size, &read_registerCallback_params);
+	// camera->read_m021_register(M021_AE_ROI_Y_SIZE_REGISTER, &m021_registers.ae_roi_y_size, &read_registerCallback_params);
+	// camera->read_m021_register(M021_AE_AG_EXPOSURE_HI_REGISTER, &m021_registers.ae_ag_exposure_hi, &read_registerCallback_params);
+	// camera->read_m021_register(M021_AE_AG_EXPOSURE_LO_REGISTER, &m021_registers.ae_ag_exposure_lo, &read_registerCallback_params);
+	// camera->read_m021_register(M021_AE_MIN_EV_STEP_REGISTER, &m021_registers.ae_min_ev_step, &read_registerCallback_params);
+	// camera->read_m021_register(M021_AE_MAX_EV_STEP_REGISTER, &m021_registers.ae_max_ev_step, &read_registerCallback_params);
+	// camera->read_m021_register(M021_EMBEDDED_DATA_CTRL_REGISTER, &m021_registers.embedded_data_ctrl, &read_registerCallback_params);
+	// camera->read_m021_register(M021_AE_DARK_CURRENT_THRESHOLD_REGISTER, &m021_registers.ae_dark_current_threshold, &read_registerCallback_params);
 }
 
 #if 1

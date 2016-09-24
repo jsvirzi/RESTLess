@@ -4,7 +4,7 @@
 
 static bool split(std::vector<std::string> &elements, const char *buffer, int len, const char *delims);
 
-static void *server_loop(void *ext) {
+static void *serverLoop(void *ext) {
 
 	RESTless::ServerLoopParams *params = (RESTless::ServerLoopParams *)ext;
 
@@ -23,7 +23,7 @@ static void *server_loop(void *ext) {
 	while(*params->run) {
 
 		usleep(params->sleep_wait); /* loop pacer */
-// printf("server_loop\n");
+// printf("serverLoop\n");
 
 		int i, n_read, curtime = time(0);
 
@@ -82,7 +82,7 @@ printf("error: socket %d multiply mapped\n", fd); /* jsv. not sure about what ac
 				that->unmap_socket(that->poll_set[i].fd); /* closes fd */
 			} else {
 			/* new timeout based on recent activity */
-				that->register_socket_sunset(that->poll_set[i].fd, that->socket_keep_alive);
+				that->registerSocketSunset(that->poll_set[i].fd, that->socket_keep_alive);
 				bzero(reply_buff, reply_buff_length);
 				int n = read(that->poll_set[i].fd, reply_buff, reply_buff_length-1);
 				if(n < 0) {
@@ -121,7 +121,7 @@ if(that->verbose) printf("accepted connection client = %d bound to server = %d\n
 			that->poll_fd.events = POLLIN;
 			that->poll_fds.push_back(that->poll_fd);
 			that->map_socket(client_sockfd);
-			that->register_socket_sunset(client_sockfd, that->socket_keep_alive);
+			that->registerSocketSunset(client_sockfd, that->socket_keep_alive);
 if(that->verbose) printf("adding client on %d (i=%d)\n", client_sockfd, that->poll_set[i].fd);
 			client_sockfd = accept(that->sockfd, (struct sockaddr *) &that->cli_addr, &that->clilen);
 		}
@@ -275,7 +275,7 @@ static bool split(std::vector<std::string> &elements, const char *buffer, int le
 	return true;
 }
 
-bool RESTless::register_callback(CallbackFxn *fxn, void *ext) {
+bool RESTless::registerCallback(CallbackFxn *fxn, void *ext) {
 	CallbackParams params;
 	params.fxn = fxn;
 	params.ext = ext;
@@ -339,16 +339,16 @@ bool RESTless::init(unsigned int cpu_mask) {
 	const char *name = "\"RESTless\""; // jsv move to include
 
 /* create a new thread for the server loop */
-	server_loop_params.sleep_wait = 250000; /* ms */
-	server_loop_params.log_buff_length = log_buff_length;
-	server_loop_params.log_buff = new char [ server_loop_params.log_buff_length ]; /* thread-safe, its own buffer */
-	server_loop_params.log_fxn = log_fxn;
-	server_loop_params.thread_running = &thread_running;
-	server_loop_params.reply_buff_length = 1024; // jsv move to configurable 
-	server_loop_params.run = &run;
-	server_loop_params.that = this; 
+	serverLoopParams.sleep_wait = 250000; /* ms */
+	serverLoopParams.log_buff_length = log_buff_length;
+	serverLoopParams.log_buff = new char [ serverLoopParams.log_buff_length ]; /* thread-safe, its own buffer */
+	serverLoopParams.log_fxn = log_fxn;
+	serverLoopParams.thread_running = &thread_running;
+	serverLoopParams.reply_buff_length = 1024; // jsv move to configurable 
+	serverLoopParams.run = &run;
+	serverLoopParams.that = this; 
 
-	int err = pthread_create(&tid, NULL, &server_loop, (void *)&server_loop_params);
+	int err = pthread_create(&tid, NULL, &serverLoop, (void *)&serverLoopParams);
 
 	if(cpu_mask) { /* are we requesting this thread to be on a particular core? */
 
@@ -478,7 +478,7 @@ int RESTless::get_socket_sunset(int fd) {
 	return (count > 1) ? -1 : sunset;
 }
 
-int RESTless::register_socket_sunset(int fd, int timeout) {
+int RESTless::registerSocketSunset(int fd, int timeout) {
 	int i, curtime = time(0), count = 0;
 	for(i=0;i<n_sockets;++i) {
 		if(socket_index[i] == fd) {
@@ -544,7 +544,7 @@ bool RESTless::close() {
 
 	snprintf(log_buff, log_buff_length, "shutting down server service");
 	log_fxn(LOG_LEVEL_INFO, log_buff);
-	server_loop_params.run = 0;
+	serverLoopParams.run = 0;
 	char *thread_result;
 	pthread_join(tid, (void**) &thread_result);
 	snprintf(log_buff, log_buff_length, "server service stopped");
